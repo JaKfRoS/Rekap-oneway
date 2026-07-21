@@ -4,6 +4,9 @@ import { Transaction, INITIAL_TRANSACTIONS } from './dummyData';
 const STORAGE_KEY = 'pembukuan_transactions';
 const CONFIG_KEY = 'pembukuan_supabase_config';
 
+const HARDCODED_URL = 'https://ohhjcqihrjmewfbymhar.supabase.co';
+const HARDCODED_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oaGpjcWlocmptZXdmYnltaGFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2MTU0MjcsImV4cCI6MjEwMDE5MTQyN30.DmvCcF9w7fArZojyY8Xczzs4Ji4RyPv08fQJBEH-REc';
+
 export interface SupabaseConfig {
   url: string;
   anonKey: string;
@@ -11,51 +14,24 @@ export interface SupabaseConfig {
 }
 
 export function getSupabaseConfig(): SupabaseConfig {
-  const stored = localStorage.getItem(CONFIG_KEY);
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch (e) {
-      // ignore
-    }
-  }
-  return { url: '', anonKey: '', isEnabled: false };
+  return { url: HARDCODED_URL, anonKey: HARDCODED_KEY, isEnabled: true };
 }
 
 export function saveSupabaseConfig(config: SupabaseConfig) {
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  // No-op because it is hardcoded as requested
 }
 
 export function getSupabaseClient() {
-  const config = getPastOrCurrentConfig();
-  if (config && config.url && config.anonKey && config.isEnabled) {
-    try {
-      return createClient(config.url, config.anonKey);
-    } catch (err) {
-      console.error("Gagal menginisialisasi client Supabase:", err);
-      return null;
-    }
+  try {
+    return createClient(HARDCODED_URL, HARDCODED_KEY);
+  } catch (err) {
+    console.error("Gagal menginisialisasi client Supabase:", err);
+    return null;
   }
-  return null;
 }
 
 function getPastOrCurrentConfig(): SupabaseConfig | null {
-  const stored = localStorage.getItem(CONFIG_KEY);
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored);
-      if (parsed.url && parsed.anonKey) {
-        return parsed;
-      }
-    } catch (e) {}
-  }
-  // Fallback to process.env if specified
-  const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-  const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
-  if (envUrl && envKey) {
-    return { url: envUrl, anonKey: envKey, isEnabled: true };
-  }
-  return null;
+  return { url: HARDCODED_URL, anonKey: HARDCODED_KEY, isEnabled: true };
 }
 
 // Format date helper for database/display

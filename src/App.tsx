@@ -3,7 +3,6 @@ import {
   LayoutDashboard, 
   Receipt, 
   FilePieChart, 
-  Database,
   CloudLightning,
   TrendingUp,
   TrendingDown,
@@ -18,8 +17,7 @@ import {
   getTransactions, 
   addTransaction, 
   updateTransaction, 
-  deleteTransaction, 
-  getSupabaseConfig 
+  deleteTransaction 
 } from './utils/supabaseClient';
 import { formatIDR } from './utils/formatters';
 
@@ -27,9 +25,8 @@ import { formatIDR } from './utils/formatters';
 import Dashboard from './components/Dashboard';
 import Transactions from './components/Transactions';
 import Reports from './components/Reports';
-import SupabaseConfig from './components/SupabaseConfig';
 
-type TabId = 'dashboard' | 'transactions' | 'reports' | 'config';
+type TabId = 'dashboard' | 'transactions' | 'reports';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
@@ -111,9 +108,7 @@ export default function App() {
     }
   };
 
-  const handleConfigChanged = () => {
-    loadData();
-  };
+
 
   // Quick Global Balances Header Card
   const globalBalances = React.useMemo(() => {
@@ -152,16 +147,8 @@ export default function App() {
         <span>
           {dataSource === 'supabase' 
             ? 'TERKONEKSI KE SUPABASE CLOUD' 
-            : 'MODE OFFLINE-LOCAL (Data disimpan di browser Anda)'}
+            : 'MODE OFFLINE-LOCAL (Gagal tersambung ke Supabase Cloud)'}
         </span>
-        {dataSource !== 'supabase' && (
-          <button 
-            onClick={() => setActiveTab('config')} 
-            className="underline ml-1 hover:text-indigo-100 font-extrabold cursor-pointer"
-          >
-            Hubungkan ke Database
-          </button>
-        )}
       </div>
 
       {/* Main Header */}
@@ -218,8 +205,7 @@ export default function App() {
               {[
                 { id: 'dashboard', label: 'Dasbor', icon: LayoutDashboard },
                 { id: 'transactions', label: 'Transaksi', icon: Receipt },
-                { id: 'reports', label: 'Laporan', icon: FilePieChart },
-                { id: 'config', label: 'Supabase', icon: Database }
+                { id: 'reports', label: 'Laporan', icon: FilePieChart }
               ].map(tab => {
                 const IconComp = tab.icon;
                 return (
@@ -281,8 +267,7 @@ export default function App() {
             {[
               { id: 'dashboard', label: 'Dasbor Rekapan', icon: LayoutDashboard },
               { id: 'transactions', label: 'Catat & Kelola Transaksi', icon: Receipt },
-              { id: 'reports', label: 'Ekspor & Cetak Laporan', icon: FilePieChart },
-              { id: 'config', label: 'Koneksi Cloud Supabase', icon: Database }
+              { id: 'reports', label: 'Ekspor & Cetak Laporan', icon: FilePieChart }
             ].map(tab => {
               const IconComp = tab.icon;
               return (
@@ -355,10 +340,6 @@ export default function App() {
 
           {activeTab === 'reports' && (
             <Reports transactions={transactions} />
-          )}
-
-          {activeTab === 'config' && (
-            <SupabaseConfig onConfigChanged={handleConfigChanged} />
           )}
 
         </div>
