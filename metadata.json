@@ -1,0 +1,6 @@
+{
+  "name": "Sistem Pembukuan Jasa",
+  "description": "Sistem Pembukuan Keuangan Usaha Jasa Freelance & Agensi (Pembuatan Toko, Handle Toko, Shopee Affiliate) dengan Dashboard, Transaksi, dan Ekspor Laporan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
