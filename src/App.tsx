@@ -19,7 +19,7 @@ import {
   updateTransaction, 
   deleteTransaction 
 } from './utils/supabaseClient';
-import { formatIDR } from './utils/formatters';
+import { formatIDR, getActualIncomeAmount } from './utils/formatters';
 
 // Component imports
 import Dashboard from './components/Dashboard';
@@ -136,7 +136,7 @@ export default function App() {
     let expense = 0;
     transactions.forEach(t => {
       if (t.type === 'income') {
-        income += t.amount;
+        income += getActualIncomeAmount(t);
       } else {
         expense += t.amount;
       }
