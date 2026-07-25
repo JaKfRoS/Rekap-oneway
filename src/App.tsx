@@ -158,12 +158,20 @@ export default function App() {
             
             {/* Logo / Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
-              <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-sm hover:shadow shadow-indigo-200">
-                <Wallet className="w-5 h-5" />
+              <div className="w-10 h-10 bg-white border border-slate-200/80 rounded-xl flex items-center justify-center shadow-xs hover:shadow transition-all overflow-hidden p-1">
+                <img 
+                  src="/logo.png" 
+                  alt="Logo KasUsaha" 
+                  className="w-full h-full object-contain rounded-lg" 
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://lh3.googleusercontent.com/d/1w0I5o1pXndY0C5VRXF378FI7QiGvXyKb';
+                  }}
+                />
               </div>
               <div>
                 <span className="block font-black text-slate-900 leading-none text-base tracking-tight">KASUSAHA</span>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Sistem Pembukuan Jasa</span>
+                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Aplikasi Pembukuan</span>
               </div>
             </div>
 

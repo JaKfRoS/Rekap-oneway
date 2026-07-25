@@ -157,7 +157,7 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Ringkasan Keuangan Usaha</h1>
           <p className="text-slate-500 text-sm mt-1">
-            Sistem akuntansi terpadu jasa freelance & agensi. Sinkronisasi data otomatis.
+            Sistem akuntansi
           </p>
         </div>
         <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">

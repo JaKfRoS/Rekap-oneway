@@ -478,7 +478,7 @@ export default function Transactions({
                   <span>Sisa Piutang: <strong className="text-amber-700">{formatIDR(Math.max(0, (Number(formAmount) || 0) - (Number(formDpAmount) || 0)))}</strong></span>
                 </div>
                 <p className="text-[11px] text-amber-700">
-                  * Uang yang masuk ke catatan pemasukan kas hanya sebesar nominal DP. Sisa piutang dapat dilunasi kapan saja melalui tombol "Pencet Lunas".
+                  * Uang yang masuk ke catatan pemasukan kas hanya sebesar nominal DP. Sisa piutang dapat dilunasi kapan saja melalui tombol "Lunas".
                 </p>
               </div>
             )}
@@ -737,7 +737,7 @@ export default function Transactions({
                             </span>
                             {t.payment_status === 'partial' && (
                               <p className="text-[10px] text-slate-400 font-medium">
-                                Total Deal: {formatIDR(t.amount)}
+                                Nilai Project : {formatIDR(t.amount)}
                               </p>
                             )}
                           </div>
@@ -752,15 +752,15 @@ export default function Transactions({
                       <td className="py-4 px-6 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2">
                           
-                          {/* Tombol Pencet Lunas (if piutang / partial / unpaid) */}
+                          {/* Tombol Lunas (if piutang / partial / unpaid) */}
                           {t.type === 'income' && t.payment_status !== 'paid' && (
                             <button
                               onClick={() => setPelunasanTx(t)}
                               className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-2xs hover:shadow cursor-pointer"
-                              title="Pencet Lunas (Pelunasan Piutang)"
+                              title="Lunas (Pelunasan Piutang)"
                             >
                               <Check className="w-3.5 h-3.5" />
-                              Pencet Lunas
+                              Lunas
                             </button>
                           )}
 

@@ -39,9 +39,50 @@ export function formatDate(dateStr: string): string {
   return dateStr; // Keep as string YYYY-MM-DD
 }
 
+function isDpAmountColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = (typeof err === 'string' ? err : err.message || JSON.stringify(err)).toLowerCase();
+  return msg.includes('dp_amount') || msg.includes('schema cache');
+}
+
+function parseDpAmountFromItem(item: any, localMap: Map<string, number | null>): { dpAmount: number | null; cleanNotes: string } {
+  let rawNotes = item.notes || '';
+  let dpAmount: number | null = null;
+
+  if (item.dp_amount != null && item.dp_amount !== '') {
+    dpAmount = Number(item.dp_amount);
+  } else {
+    // Check if DP tag exists in notes [DP: 1000000]
+    const match = rawNotes.match(/\[DP:\s*(\d+)\]/);
+    if (match && match[1]) {
+      dpAmount = Number(match[1]);
+    } else if (localMap.has(item.id)) {
+      dpAmount = localMap.get(item.id) ?? null;
+    }
+  }
+
+  // Clean tag from notes display
+  const cleanNotes = rawNotes.replace(/\[DP:\s*\d+\]\s*/g, '').trim();
+
+  return { dpAmount, cleanNotes };
+}
+
+function formatNotesWithDp(notes: string, dpAmount?: number | null, paymentStatus?: string): string {
+  let baseNotes = (notes || '').replace(/\[DP:\s*\d+\]\s*/g, '').trim();
+  if (paymentStatus === 'partial' && dpAmount != null && dpAmount > 0) {
+    return `[DP: ${dpAmount}] ${baseNotes}`.trim();
+  }
+  return baseNotes;
+}
+
 // Core functions to fetch, add, update, delete
 export async function getTransactions(): Promise<{ data: Transaction[]; source: 'supabase' | 'local'; error?: string }> {
   const supabase = getSupabaseClient();
+  const localData = getLocalTransactions();
+  const localMap = new Map<string, number | null>();
+  localData.forEach(item => {
+    if (item.dp_amount != null) localMap.set(item.id, item.dp_amount);
+  });
   
   if (supabase) {
     try {
@@ -56,18 +97,21 @@ export async function getTransactions(): Promise<{ data: Transaction[]; source: 
 
       if (data) {
         // Map any field mappings if necessary
-        const mappedData: Transaction[] = data.map(item => ({
-          id: item.id,
-          created_at: item.created_at,
-          date: item.date,
-          type: item.type as 'income' | 'expense',
-          category: item.category,
-          client_name: item.client_name,
-          amount: Number(item.amount),
-          dp_amount: item.dp_amount != null ? Number(item.dp_amount) : null,
-          payment_status: item.payment_status as 'paid' | 'unpaid' | 'partial',
-          notes: item.notes || ''
-        }));
+        const mappedData: Transaction[] = data.map(item => {
+          const { dpAmount, cleanNotes } = parseDpAmountFromItem(item, localMap);
+          return {
+            id: item.id,
+            created_at: item.created_at,
+            date: item.date,
+            type: item.type as 'income' | 'expense',
+            category: item.category,
+            client_name: item.client_name,
+            amount: Number(item.amount),
+            dp_amount: dpAmount,
+            payment_status: item.payment_status as 'paid' | 'unpaid' | 'partial',
+            notes: cleanNotes
+          };
+        });
         
         // Save to local storage for caching/backup
         localStorage.setItem(STORAGE_KEY, JSON.stringify(mappedData));
@@ -75,7 +119,6 @@ export async function getTransactions(): Promise<{ data: Transaction[]; source: 
       }
     } catch (err: any) {
       console.error("Gagal menarik data dari Supabase, beralih ke Lokal:", err);
-      const localData = getLocalTransactions();
       return { 
         data: localData, 
         source: 'local', 
@@ -85,7 +128,6 @@ export async function getTransactions(): Promise<{ data: Transaction[]; source: 
   }
 
   // Fallback to Local Storage
-  const localData = getLocalTransactions();
   return { data: localData, source: 'local' };
 }
 
@@ -122,20 +164,30 @@ export async function addTransaction(transaction: Omit<Transaction, 'id' | 'crea
   const supabase = getSupabaseClient();
   if (supabase) {
     try {
-      const { error } = await supabase
+      const notesForDb = formatNotesWithDp(newTransaction.notes, newTransaction.dp_amount, newTransaction.payment_status);
+
+      const payload: any = {
+        id,
+        created_at,
+        date: newTransaction.date,
+        type: newTransaction.type,
+        category: newTransaction.category,
+        client_name: newTransaction.client_name,
+        amount: newTransaction.amount,
+        dp_amount: newTransaction.dp_amount || null,
+        payment_status: newTransaction.payment_status,
+        notes: notesForDb
+      };
+
+      let { error } = await supabase
         .from('transactions')
-        .insert([{
-          id,
-          created_at,
-          date: newTransaction.date,
-          type: newTransaction.type,
-          category: newTransaction.category,
-          client_name: newTransaction.client_name,
-          amount: newTransaction.amount,
-          dp_amount: newTransaction.dp_amount || null,
-          payment_status: newTransaction.payment_status,
-          notes: newTransaction.notes
-        }]);
+        .insert([payload]);
+
+      if (error && isDpAmountColumnError(error)) {
+        delete payload.dp_amount;
+        const retry = await supabase.from('transactions').insert([payload]);
+        error = retry.error;
+      }
 
       if (error) throw error;
       return { success: true, data: newTransaction };
@@ -162,19 +214,32 @@ export async function updateTransaction(transaction: Transaction): Promise<{ suc
   const supabase = getSupabaseClient();
   if (supabase) {
     try {
-      const { error } = await supabase
+      const notesForDb = formatNotesWithDp(transaction.notes, transaction.dp_amount, transaction.payment_status);
+
+      const payload: any = {
+        date: transaction.date,
+        type: transaction.type,
+        category: transaction.category,
+        client_name: transaction.client_name,
+        amount: transaction.amount,
+        dp_amount: transaction.dp_amount || null,
+        payment_status: transaction.payment_status,
+        notes: notesForDb
+      };
+
+      let { error } = await supabase
         .from('transactions')
-        .update({
-          date: transaction.date,
-          type: transaction.type,
-          category: transaction.category,
-          client_name: transaction.client_name,
-          amount: transaction.amount,
-          dp_amount: transaction.dp_amount || null,
-          payment_status: transaction.payment_status,
-          notes: transaction.notes
-        })
+        .update(payload)
         .eq('id', transaction.id);
+
+      if (error && isDpAmountColumnError(error)) {
+        delete payload.dp_amount;
+        const retry = await supabase
+          .from('transactions')
+          .update(payload)
+          .eq('id', transaction.id);
+        error = retry.error;
+      }
 
       if (error) throw error;
       return { success: true, data: transaction };
@@ -253,13 +318,22 @@ export async function syncLocalToSupabase(): Promise<{ success: boolean; count: 
       category: item.category,
       client_name: item.client_name,
       amount: item.amount,
+      dp_amount: item.dp_amount || null,
       payment_status: item.payment_status,
-      notes: item.notes
+      notes: formatNotesWithDp(item.notes, item.dp_amount, item.payment_status)
     }));
 
-    const { error: insertErr } = await supabase
+    let { error: insertErr } = await supabase
       .from('transactions')
       .insert(dbPayload);
+
+    if (insertErr && isDpAmountColumnError(insertErr)) {
+      const strippedPayload = dbPayload.map(({ dp_amount, ...rest }) => rest);
+      const retry = await supabase
+        .from('transactions')
+        .insert(strippedPayload);
+      insertErr = retry.error;
+    }
 
     if (insertErr) throw insertErr;
 
