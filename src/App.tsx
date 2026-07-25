@@ -62,6 +62,26 @@ export default function App() {
 
   useEffect(() => {
     loadData();
+
+    // Ensure favicon is applied and updated in browser tab
+    try {
+      const existingFavicons = document.querySelectorAll("link[rel*='icon']");
+      existingFavicons.forEach(el => el.remove());
+
+      const link = document.createElement('link');
+      link.type = 'image/png';
+      link.rel = 'icon';
+      link.href = '/logo.png';
+      document.head.appendChild(link);
+
+      const shortcutLink = document.createElement('link');
+      shortcutLink.type = 'image/png';
+      shortcutLink.rel = 'shortcut icon';
+      shortcutLink.href = '/logo.png';
+      document.head.appendChild(shortcutLink);
+    } catch (e) {
+      console.error(e);
+    }
   }, []);
 
   // CRUD Operations
