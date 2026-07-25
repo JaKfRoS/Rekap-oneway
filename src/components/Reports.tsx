@@ -248,6 +248,10 @@ export default function Reports({ transactions }: ReportsProps) {
       {/* Dynamic styles injected just for printing this specific container */}
       <style>{`
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 8mm 10mm;
+          }
           /* Hide everything except print-area */
           body * {
             visibility: hidden;
@@ -262,7 +266,7 @@ export default function Reports({ transactions }: ReportsProps) {
             top: 0;
             width: 100%;
             margin: 0;
-            padding: 24px;
+            padding: 0 !important;
             box-shadow: none !important;
             border: none !important;
           }
@@ -272,6 +276,18 @@ export default function Reports({ transactions }: ReportsProps) {
           .page-break {
             page-break-before: always !important;
             break-before: page !important;
+            margin-top: 0 !important;
+            padding-top: 12px !important;
+          }
+          .print-grid-2 {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 12px !important;
+          }
+          .print-grid-4 {
+            display: grid !important;
+            grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+            gap: 8px !important;
           }
         }
       `}</style>
@@ -362,17 +378,17 @@ export default function Reports({ transactions }: ReportsProps) {
       {/* REPORT PREVIEW CONTAINER (Styled as an A4 Paper layout) */}
       <div 
         id="print-area" 
-        className="bg-white p-8 md:p-12 rounded-2xl border border-slate-200 shadow-sm max-w-[800px] mx-auto text-slate-800 space-y-8"
+        className="bg-white p-6 md:p-10 rounded-2xl border border-slate-200 shadow-xs max-w-[850px] mx-auto text-slate-800 space-y-6"
       >
         {/* ================= PAGE 1 ================= */}
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Print Header Page 1 */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-2 border-slate-900 pb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-2 border-slate-900 pb-3">
             <div>
-              <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">Ringkasan Keuangan</h1>
+              <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">RINGKASAN KEUANGAN</h1>
               <p className="text-xs font-bold text-slate-500 tracking-wider mt-0.5">Ikhtisar Pendapatan & Kas Masuk/Keluar</p>
             </div>
-            <div className="text-left sm:text-right mt-3 sm:mt-0 text-xs text-slate-500 space-y-0.5">
+            <div className="text-left sm:text-right mt-2 sm:mt-0 text-xs text-slate-500 space-y-0.5">
               <p><strong>Dicetak pada:</strong> {formatLongDate('2026-07-21')}</p>
               <p>
                 <strong>Periode:</strong>{' '}
@@ -384,75 +400,75 @@ export default function Reports({ transactions }: ReportsProps) {
             </div>
           </div>
 
-          {/* Summary Metrics Row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-2 border-b border-slate-100">
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Pemasukan</p>
-              <p className="text-sm font-extrabold text-emerald-600 mt-1">{formatIDR(reportStats.income)}</p>
+          {/* Summary Metrics Row (4 Columns forced) */}
+          <div className="grid grid-cols-2 md:grid-cols-4 print-grid-4 gap-2.5">
+            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Pemasukan</p>
+              <p className="text-sm font-black text-emerald-600 mt-0.5">{formatIDR(reportStats.income)}</p>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Pengeluaran</p>
-              <p className="text-sm font-extrabold text-rose-600 mt-1">{formatIDR(reportStats.expense)}</p>
+            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Pengeluaran</p>
+              <p className="text-sm font-black text-rose-600 mt-0.5">{formatIDR(reportStats.expense)}</p>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Laba Bersih (Net Profit)</p>
-              <p className={`text-sm font-extrabold mt-1 ${reportStats.netProfit >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
+            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Laba Bersih</p>
+              <p className={`text-sm font-black mt-0.5 ${reportStats.netProfit >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
                 {formatIDR(reportStats.netProfit)}
               </p>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Outstanding / Piutang</p>
-              <p className="text-sm font-extrabold text-amber-600 mt-1">{formatIDR(reportStats.pending)}</p>
+            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Outstanding / Piutang</p>
+              <p className="text-sm font-black text-amber-600 mt-0.5">{formatIDR(reportStats.pending)}</p>
             </div>
           </div>
 
-          {/* Visual Chart / Grafik Keuangan (Seperti di Dasbor) */}
-          <div className="py-4 border-b border-slate-100 space-y-3">
+          {/* Visual Chart / Grafik Keuangan (Side-by-Side 2 Columns Forced) */}
+          <div className="space-y-2">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-l-4 border-indigo-600 pl-2">
               Grafik Perbandingan & Proporsi Keuangan
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+            <div className="grid grid-cols-1 md:grid-cols-2 print-grid-2 gap-3">
               
               {/* Bar Chart */}
-              <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100">
-                <p className="text-[11px] font-bold text-slate-600 mb-2 text-center">Pemasukan vs Pengeluaran</p>
-                <div className="h-44 w-full">
+              <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/80">
+                <p className="text-[11px] font-bold text-slate-700 mb-1 text-center">Pemasukan vs Pengeluaran</p>
+                <div className="h-36 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickFormatter={(val) => `${val / 1000}k`} axisLine={false} tickLine={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 8, fill: '#64748b' }} tickFormatter={(val) => `${val / 1000}k`} axisLine={false} tickLine={false} />
                       <Tooltip 
                         formatter={(value: any) => [formatIDR(Number(value)), '']}
-                        contentStyle={{ backgroundColor: '#ffffff', borderRadius: '8px', fontSize: '11px', border: '1px solid #e2e8f0' }}
+                        contentStyle={{ backgroundColor: '#ffffff', borderRadius: '6px', fontSize: '10px', border: '1px solid #e2e8f0' }}
                       />
-                      <Bar dataKey="income" name="Pemasukan" fill="#10b981" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="expense" name="Pengeluaran" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="income" name="Pemasukan" fill="#10b981" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="expense" name="Pengeluaran" fill="#f43f5e" radius={[3, 3, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
 
               {/* Pie Chart / Category Breakdown */}
-              <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-100">
-                <p className="text-[11px] font-bold text-slate-600 mb-2 text-center">Proporsi Pemasukan Layanan</p>
+              <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/80">
+                <p className="text-[11px] font-bold text-slate-700 mb-1 text-center">Proporsi Pemasukan Layanan</p>
                 {pieCategoryData.length === 0 ? (
-                  <div className="h-44 flex items-center justify-center text-xs text-slate-400 italic">
+                  <div className="h-36 flex items-center justify-center text-xs text-slate-400 italic">
                     Belum ada data pemasukan
                   </div>
                 ) : (
-                  <div className="h-44 w-full">
+                  <div className="h-36 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
                           data={pieCategoryData}
                           cx="50%"
-                          cy="50%"
-                          innerRadius={30}
-                          outerRadius={55}
+                          cy="42%"
+                          innerRadius={24}
+                          outerRadius={46}
                           paddingAngle={3}
                           dataKey="value"
                         >
@@ -461,7 +477,7 @@ export default function Reports({ transactions }: ReportsProps) {
                           ))}
                         </Pie>
                         <Tooltip formatter={(val: any) => [formatIDR(Number(val)), 'Nominal']} />
-                        <Legend formatter={(value) => <span className="text-[10px] text-slate-600">{value}</span>} />
+                        <Legend formatter={(value) => <span className="text-[9px] text-slate-600">{value}</span>} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
@@ -471,22 +487,22 @@ export default function Reports({ transactions }: ReportsProps) {
             </div>
           </div>
 
-          {/* Detailed Section: Categories Breakdown */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-2">
+          {/* Detailed Section: Categories Breakdown (2 Columns forced) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 print-grid-2 gap-3 pt-1">
             {/* Income categories */}
-            <div className="space-y-2">
+            <div className="space-y-1">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-l-4 border-emerald-500 pl-2">
                 Rincian Pemasukan per Layanan
               </h3>
-              <div className="space-y-1">
+              <div className="space-y-1 bg-slate-50/50 p-2 rounded-lg border border-slate-100">
                 {reportStats.incomeCategories.length === 0 ? (
                   <p className="text-xs text-slate-400 italic">Tidak ada rincian pemasukan.</p>
                 ) : (
                   reportStats.incomeCategories.map(([name, val]) => {
                     const percent = reportStats.income > 0 ? ((val / reportStats.income) * 100).toFixed(1) : '0';
                     return (
-                      <div key={name} className="flex justify-between items-center text-xs text-slate-600 py-1 border-b border-slate-50">
-                        <span className="font-medium">{name}</span>
+                      <div key={name} className="flex justify-between items-center text-[11px] text-slate-600 py-0.5 border-b border-slate-100 last:border-0">
+                        <span className="font-medium truncate max-w-[150px]">{name}</span>
                         <span className="font-bold text-slate-800">{formatIDR(val)} <span className="font-normal text-slate-400">({percent}%)</span></span>
                       </div>
                     );
@@ -496,19 +512,19 @@ export default function Reports({ transactions }: ReportsProps) {
             </div>
 
             {/* Expense categories */}
-            <div className="space-y-2">
+            <div className="space-y-1">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-l-4 border-rose-500 pl-2">
                 Rincian Pengeluaran per Kategori
               </h3>
-              <div className="space-y-1">
+              <div className="space-y-1 bg-slate-50/50 p-2 rounded-lg border border-slate-100">
                 {reportStats.expenseCategories.length === 0 ? (
                   <p className="text-xs text-slate-400 italic">Tidak ada rincian pengeluaran.</p>
                 ) : (
                   reportStats.expenseCategories.map(([name, val]) => {
                     const percent = reportStats.expense > 0 ? ((val / reportStats.expense) * 100).toFixed(1) : '0';
                     return (
-                      <div key={name} className="flex justify-between items-center text-xs text-slate-600 py-1 border-b border-slate-50">
-                        <span className="font-medium">{name}</span>
+                      <div key={name} className="flex justify-between items-center text-[11px] text-slate-600 py-0.5 border-b border-slate-100 last:border-0">
+                        <span className="font-medium truncate max-w-[150px]">{name}</span>
                         <span className="font-bold text-slate-800">{formatIDR(val)} <span className="font-normal text-slate-400">({percent}%)</span></span>
                       </div>
                     );
@@ -519,42 +535,42 @@ export default function Reports({ transactions }: ReportsProps) {
           </div>
 
           {/* Footer Page 1 */}
-          <div className="flex justify-between items-center pt-6 border-t border-slate-100 text-[10px] text-slate-400">
+          <div className="flex justify-between items-center pt-3 border-t border-slate-200 text-[10px] text-slate-400">
             <p>KASUSAHA &bull; Ringkasan Keuangan Usaha</p>
-            <p className="text-right font-medium">Halaman 1 dari 2</p>
+            <p className="text-right font-semibold text-slate-600">Halaman 1 dari 2</p>
           </div>
         </div>
 
         {/* ================= PAGE 2 (STARTING FROM PAGE 2) ================= */}
-        <div className="page-break pt-8 border-t-2 border-dashed border-slate-200 mt-8 space-y-6">
+        <div className="page-break pt-4 border-t-2 border-dashed border-slate-200 mt-6 space-y-4">
           {/* Print Header Page 2 */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-2 border-slate-900 pb-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-2 border-slate-900 pb-3">
             <div>
-              <h2 className="text-xl font-black uppercase tracking-tight text-slate-900">Ringkasan Keuangan</h2>
-              <p className="text-xs font-bold text-slate-500 tracking-wider mt-0.5">Ikhtisar Pendapatan & Kas Masuk/Keluar</p>
+              <h2 className="text-xl font-black uppercase tracking-tight text-slate-900">RINGKASAN KEUANGAN</h2>
+              <p className="text-xs font-bold text-slate-500 tracking-wider mt-0.5">Lampiran Detail Transaksi Keuangan</p>
             </div>
             <div className="text-left sm:text-right mt-2 sm:mt-0 text-xs text-slate-500">
-              <p><strong>Lampiran Detail Transaksi</strong></p>
+              <p><strong>Periode:</strong> {startDate && endDate ? `${formatShortDate(startDate)} - ${formatShortDate(endDate)}` : 'Semua Waktu'}</p>
             </div>
           </div>
 
           {/* Transactions List */}
-          <div className="space-y-4">
+          <div className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-l-4 border-slate-700 pl-2">
-              Ringkasan Detail Transaksi Terlampir
+              Daftar Rincian Transaksi Terlampir
             </h3>
             
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-xs border-collapse border border-slate-200">
               <thead>
-                <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200">
-                  <th className="p-2">Tanggal</th>
-                  <th className="p-2">Tipe</th>
-                  <th className="p-2">Kategori</th>
-                  <th className="p-2">Klien / Deskripsi</th>
+                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                  <th className="p-2 border-r border-slate-200">Tanggal</th>
+                  <th className="p-2 border-r border-slate-200">Tipe</th>
+                  <th className="p-2 border-r border-slate-200">Kategori</th>
+                  <th className="p-2 border-r border-slate-200">Klien / Deskripsi</th>
                   <th className="p-2 text-right">Jumlah (Nominal)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-200">
                 {filteredTransactions.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="p-4 text-center text-slate-400 italic">
@@ -564,14 +580,14 @@ export default function Reports({ transactions }: ReportsProps) {
                 ) : (
                   filteredTransactions.map(t => (
                     <tr key={t.id} className="hover:bg-slate-50/50">
-                      <td className="p-2 text-slate-500 whitespace-nowrap">{formatShortDate(t.date)}</td>
-                      <td className="p-2 font-bold whitespace-nowrap">
+                      <td className="p-2 text-slate-600 whitespace-nowrap border-r border-slate-100">{formatShortDate(t.date)}</td>
+                      <td className="p-2 font-bold whitespace-nowrap border-r border-slate-100">
                         <span className={t.type === 'income' ? 'text-emerald-700' : 'text-rose-700'}>
                           {t.type === 'income' ? 'Masuk' : 'Keluar'}
                         </span>
                       </td>
-                      <td className="p-2 text-slate-700">{t.category}</td>
-                      <td className="p-2">
+                      <td className="p-2 text-slate-700 border-r border-slate-100">{t.category}</td>
+                      <td className="p-2 border-r border-slate-100">
                         <p className="font-bold text-slate-800 truncate max-w-[200px]">{t.client_name || '-'}</p>
                         <p className="text-[10px] text-slate-400 truncate max-w-[200px]">{t.notes || 'Tanpa catatan'}</p>
                       </td>
@@ -588,9 +604,9 @@ export default function Reports({ transactions }: ReportsProps) {
           </div>
 
           {/* Footer Page 2 */}
-          <div className="flex justify-between items-center pt-8 border-t border-slate-100 text-[10px] text-slate-400">
-            <p>KASUSAHA &bull; Ringkasan Keuangan Usaha</p>
-            <p className="text-right font-medium">Halaman 2 dari 2</p>
+          <div className="flex justify-between items-center pt-6 border-t border-slate-200 text-[10px] text-slate-400">
+            <p>KASUSAHA &bull; Lampiran Detail Transaksi Keuangan</p>
+            <p className="text-right font-semibold text-slate-600">Halaman 2 dari 2</p>
           </div>
         </div>
 
