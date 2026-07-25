@@ -5,7 +5,8 @@ export interface Transaction {
   type: 'income' | 'expense';
   category: string;
   client_name: string | null;
-  amount: number;
+  amount: number; // Total contract/deal value
+  dp_amount?: number | null; // DP paid if payment_status === 'partial'
   payment_status: 'paid' | 'unpaid' | 'partial';
   notes: string;
 }
@@ -38,6 +39,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     category: 'Pembuatan Toko',
     client_name: 'Butik Clarissa',
     amount: 2000000,
+    dp_amount: 1000000,
     payment_status: 'partial', // DP
     notes: 'DP 50% Pembuatan Toko Shopee & Upload 100 Produk'
   },

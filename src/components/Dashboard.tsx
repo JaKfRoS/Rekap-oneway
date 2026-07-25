@@ -26,7 +26,7 @@ import {
   Cell 
 } from 'recharts';
 import { Transaction } from '../utils/dummyData';
-import { formatIDR, formatShortDate } from '../utils/formatters';
+import { formatIDR, formatShortDate, getActualIncomeAmount, getPiutangAmount } from '../utils/formatters';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -64,22 +64,19 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
     let totalExpense = 0;
     let monthIncome = 0;
     let monthExpense = 0;
-    let pendingInvoicesVal = 0; // unpaid + partial (unpaid full, partial 50%)
+    let pendingInvoicesVal = 0;
 
     transactions.forEach(t => {
       const tDate = new Date(t.date);
       const isCurrentMonth = tDate.getMonth() === currentPeriod.month && tDate.getFullYear() === currentPeriod.year;
       
       if (t.type === 'income') {
-        totalIncome += t.amount;
-        if (isCurrentMonth) monthIncome += t.amount;
-        
-        // Receivables calculation
-        if (t.payment_status === 'unpaid') {
-          pendingInvoicesVal += t.amount;
-        } else if (t.payment_status === 'partial') {
-          pendingInvoicesVal += (t.amount * 0.5); // Assume 50% is still pending for partial
-        }
+        const actualCash = getActualIncomeAmount(t);
+        const piutang = getPiutangAmount(t);
+
+        totalIncome += actualCash;
+        if (isCurrentMonth) monthIncome += actualCash;
+        pendingInvoicesVal += piutang;
       } else {
         totalExpense += t.amount;
         if (isCurrentMonth) monthExpense += t.amount;
@@ -99,55 +96,47 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
 
   // Chart 1: Monthly Income vs Expense Trend
   const monthlyChartData = useMemo(() => {
-    const monthlyMap: Record<string, { income: number; expense: number }> = {};
+    const monthlyMap: Record<string, { label: string; key: string; income: number; expense: number }> = {};
     
     transactions.forEach(t => {
       const date = new Date(t.date);
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-      // Key format: "YYYY-MM"
       const yearKey = date.getFullYear();
       const monthKey = String(date.getMonth()).padStart(2, '0');
       const key = `${yearKey}-${monthKey}`;
       const label = `${monthNames[date.getMonth()]} ${String(yearKey).substring(2)}`;
       
       if (!monthlyMap[key]) {
-        (monthlyMap as any)[key] = { label, key, income: 0, expense: 0 };
+        monthlyMap[key] = { label, key, income: 0, expense: 0 };
       }
       
       if (t.type === 'income') {
-        (monthlyMap as any)[key].income += t.amount;
+        monthlyMap[key].income += getActualIncomeAmount(t);
       } else {
-        (monthlyMap as any)[key].expense += t.amount;
+        monthlyMap[key].expense += t.amount;
       }
     });
 
-    // Convert map to array and sort by year-month ascending
     return Object.values(monthlyMap)
-      .sort((a: any, b: any) => a.key.localeCompare(b.key))
-      .slice(-6); // Only take last 6 months for clear display
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .slice(-6);
   }, [transactions]);
 
   // Chart 2: Income Breakdown by Service Category
   const categoryChartData = useMemo(() => {
-    const categories = {
-      'Pembuatan Toko': 0,
-      'Handle Toko': 0,
-      'Shopee Affiliate': 0,
-      'Lain-lain': 0
-    };
+    const categoryTotals: Record<string, number> = {};
 
     transactions.forEach(t => {
       if (t.type === 'income') {
-        const cat = t.category as keyof typeof categories;
-        if (categories[cat] !== undefined) {
-          categories[cat] += t.amount;
-        } else {
-          categories['Lain-lain'] += t.amount;
+        const actualCash = getActualIncomeAmount(t);
+        if (actualCash > 0) {
+          const cat = t.category || 'Lain-lain';
+          categoryTotals[cat] = (categoryTotals[cat] || 0) + actualCash;
         }
       }
     });
 
-    return Object.entries(categories)
+    return Object.entries(categoryTotals)
       .map(([name, value]) => ({ name, value }))
       .filter(item => item.value > 0);
   }, [transactions]);

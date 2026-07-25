@@ -64,6 +64,7 @@ export async function getTransactions(): Promise<{ data: Transaction[]; source: 
           category: item.category,
           client_name: item.client_name,
           amount: Number(item.amount),
+          dp_amount: item.dp_amount != null ? Number(item.dp_amount) : null,
           payment_status: item.payment_status as 'paid' | 'unpaid' | 'partial',
           notes: item.notes || ''
         }));
@@ -131,6 +132,7 @@ export async function addTransaction(transaction: Omit<Transaction, 'id' | 'crea
           category: newTransaction.category,
           client_name: newTransaction.client_name,
           amount: newTransaction.amount,
+          dp_amount: newTransaction.dp_amount || null,
           payment_status: newTransaction.payment_status,
           notes: newTransaction.notes
         }]);
@@ -168,6 +170,7 @@ export async function updateTransaction(transaction: Transaction): Promise<{ suc
           category: transaction.category,
           client_name: transaction.client_name,
           amount: transaction.amount,
+          dp_amount: transaction.dp_amount || null,
           payment_status: transaction.payment_status,
           notes: transaction.notes
         })

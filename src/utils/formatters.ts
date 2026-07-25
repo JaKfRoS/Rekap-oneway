@@ -30,3 +30,40 @@ export const formatShortDate = (dateStr: string): string => {
     year: 'numeric'
   }).format(date);
 };
+
+// Calculate actual cash received for income transaction
+export const getActualIncomeAmount = (transaction: {
+  type: 'income' | 'expense';
+  amount: number;
+  dp_amount?: number | null;
+  payment_status: 'paid' | 'unpaid' | 'partial';
+}): number => {
+  if (transaction.type !== 'income') return 0;
+  if (transaction.payment_status === 'paid') return transaction.amount;
+  if (transaction.payment_status === 'partial') {
+    return transaction.dp_amount != null && transaction.dp_amount > 0 
+      ? transaction.dp_amount 
+      : Math.round(transaction.amount / 2); // Default to 50% if dp_amount is missing
+  }
+  return 0; // unpaid
+};
+
+// Calculate outstanding receivable / piutang for income transaction
+export const getPiutangAmount = (transaction: {
+  type: 'income' | 'expense';
+  amount: number;
+  dp_amount?: number | null;
+  payment_status: 'paid' | 'unpaid' | 'partial';
+}): number => {
+  if (transaction.type !== 'income') return 0;
+  if (transaction.payment_status === 'paid') return 0;
+  if (transaction.payment_status === 'unpaid') return transaction.amount;
+  if (transaction.payment_status === 'partial') {
+    const received = transaction.dp_amount != null && transaction.dp_amount > 0 
+      ? transaction.dp_amount 
+      : Math.round(transaction.amount / 2);
+    return Math.max(0, transaction.amount - received);
+  }
+  return 0;
+};
+

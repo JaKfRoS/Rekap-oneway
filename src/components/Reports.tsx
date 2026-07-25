@@ -12,7 +12,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { Transaction } from '../utils/dummyData';
-import { formatIDR, formatLongDate, formatShortDate } from '../utils/formatters';
+import { formatIDR, formatLongDate, formatShortDate, getActualIncomeAmount, getPiutangAmount } from '../utils/formatters';
 
 interface ReportsProps {
   transactions: Transaction[];
@@ -100,42 +100,25 @@ export default function Reports({ transactions }: ReportsProps) {
     let expense = 0;
     let pending = 0;
 
-    const incomeCategories: Record<string, number> = {
-      'Pembuatan Toko': 0,
-      'Handle Toko': 0,
-      'Shopee Affiliate': 0,
-      'Lain-lain': 0
-    };
-
-    const expenseCategories: Record<string, number> = {
-      'Operational': 0,
-      'Ads Spend': 0,
-      'Freelancer / Sub-kontraktor': 0,
-      'Tool / Langganan Software': 0,
-      'Lain-lain': 0
-    };
+    const incomeCategories: Record<string, number> = {};
+    const expenseCategories: Record<string, number> = {};
 
     filteredTransactions.forEach(t => {
       if (t.type === 'income') {
-        income += t.amount;
-        if (incomeCategories[t.category] !== undefined) {
-          incomeCategories[t.category] += t.amount;
-        } else {
-          incomeCategories['Lain-lain'] += t.amount;
-        }
+        const actualCash = getActualIncomeAmount(t);
+        const piutang = getPiutangAmount(t);
 
-        if (t.payment_status === 'unpaid') {
-          pending += t.amount;
-        } else if (t.payment_status === 'partial') {
-          pending += (t.amount * 0.5);
+        income += actualCash;
+        pending += piutang;
+
+        if (actualCash > 0) {
+          const cat = t.category || 'Lain-lain';
+          incomeCategories[cat] = (incomeCategories[cat] || 0) + actualCash;
         }
       } else {
         expense += t.amount;
-        if (expenseCategories[t.category] !== undefined) {
-          expenseCategories[t.category] += t.amount;
-        } else {
-          expenseCategories['Lain-lain'] += t.amount;
-        }
+        const cat = t.category || 'Lain-lain';
+        expenseCategories[cat] = (expenseCategories[cat] || 0) + t.amount;
       }
     });
 

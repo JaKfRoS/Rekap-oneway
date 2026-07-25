@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   PlusCircle, 
   Search, 
-  Filter, 
   Trash2, 
   Edit2, 
   X, 
@@ -12,13 +11,18 @@ import {
   BookOpen, 
   ArrowUpCircle, 
   ArrowDownCircle,
-  HelpCircle,
   AlertCircle,
   CheckCircle,
-  Undo
+  Undo,
+  Tag,
+  Clock,
+  Check
 } from 'lucide-react';
 import { Transaction } from '../utils/dummyData';
-import { formatIDR, formatShortDate } from '../utils/formatters';
+import { formatIDR, formatShortDate, getActualIncomeAmount, getPiutangAmount } from '../utils/formatters';
+import { getCategories, CategoryData } from '../utils/categories';
+import CategoryManagerModal from './CategoryManagerModal';
+import PelunasanModal from './PelunasanModal';
 
 interface TransactionsProps {
   transactions: Transaction[];
@@ -28,9 +32,6 @@ interface TransactionsProps {
   editingTransaction: Transaction | null;
   setEditingTransaction: (tx: Transaction | null) => void;
 }
-
-const INCOME_CATEGORIES = ['Pembuatan Toko', 'Handle Toko', 'Shopee Affiliate', 'Lain-lain'];
-const EXPENSE_CATEGORIES = ['Operational', 'Ads Spend', 'Freelancer / Sub-kontraktor', 'Tool / Langganan Software', 'Lain-lain'];
 
 export default function Transactions({
   transactions,
@@ -43,35 +44,53 @@ export default function Transactions({
   // Navigation & Form Toggle
   const [showForm, setShowForm] = useState<'income' | 'expense' | null>(null);
 
+  // Custom Categories state
+  const [categoriesList, setCategoriesList] = useState<CategoryData>(() => getCategories());
+  const [isCatModalOpen, setIsCatModalOpen] = useState(false);
+
+  // Pelunasan Modal state
+  const [pelunasanTx, setPelunasanTx] = useState<Transaction | null>(null);
+
   // Filter States
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense' | 'piutang'>('all');
   const [filterCategory, setFilterCategory] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Form States (for Create)
+  // Form States (for Create & Edit)
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
   const [formCategory, setFormCategory] = useState('');
   const [formClientName, setFormClientName] = useState('');
   const [formAmount, setFormAmount] = useState('');
+  const [formDpAmount, setFormDpAmount] = useState('');
   const [formPaymentStatus, setFormPaymentStatus] = useState<'paid' | 'unpaid' | 'partial'>('paid');
   const [formNotes, setFormNotes] = useState('');
   
   // Validation State
   const [valError, setValError] = useState('');
 
+  // Refresh categories from storage
+  const handleCategoriesChanged = () => {
+    const updated = getCategories();
+    setCategoriesList(updated);
+  };
+
   // Auto-set default category when form type changes
   useEffect(() => {
     if (showForm === 'income') {
-      setFormCategory(INCOME_CATEGORIES[0]);
+      const incCats = categoriesList.income;
+      setFormCategory(incCats[0] || 'Pembuatan Toko');
       setFormPaymentStatus('paid');
+      setFormDpAmount('');
     } else if (showForm === 'expense') {
-      setFormCategory(EXPENSE_CATEGORIES[0]);
+      const expCats = categoriesList.expense;
+      setFormCategory(expCats[0] || 'Operational');
       setFormClientName('');
-      setFormPaymentStatus('paid'); // not relevant, but safe
+      setFormPaymentStatus('paid');
+      setFormDpAmount('');
     }
-  }, [showForm]);
+  }, [showForm, categoriesList]);
 
   // Set form states if we are EDITING
   useEffect(() => {
@@ -81,6 +100,7 @@ export default function Transactions({
       setFormCategory(editingTransaction.category);
       setFormClientName(editingTransaction.client_name || '');
       setFormAmount(String(editingTransaction.amount));
+      setFormDpAmount(editingTransaction.dp_amount ? String(editingTransaction.dp_amount) : '');
       setFormPaymentStatus(editingTransaction.payment_status);
       setFormNotes(editingTransaction.notes);
     }
@@ -95,6 +115,7 @@ export default function Transactions({
     setFormDate(new Date().toISOString().split('T')[0]);
     setFormClientName('');
     setFormAmount('');
+    setFormDpAmount('');
     setFormNotes('');
   };
 
@@ -110,9 +131,25 @@ export default function Transactions({
     }
     const numAmount = Number(formAmount.replace(/[^0-9.-]+/g, ""));
     if (isNaN(numAmount) || numAmount <= 0) {
-      setValError('Jumlah nominal harus berupa angka positif lebih besar dari 0');
+      setValError('Jumlah nominal total harus berupa angka positif lebih besar dari 0');
       return;
     }
+
+    let numDpAmount = 0;
+    if (showForm === 'income' && formPaymentStatus === 'partial') {
+      numDpAmount = Number(formDpAmount.replace(/[^0-9.-]+/g, ""));
+      if (isNaN(numDpAmount) || numDpAmount <= 0) {
+        setValError('Nominal DP (Down Payment) harus berupa angka positif');
+        return;
+      }
+      if (numDpAmount >= numAmount) {
+        setValError('Nominal DP harus lebih kecil dari Total Deal (jika sudah lunas, pilih status "Lunas")');
+        return;
+      }
+    } else if (showForm === 'income' && formPaymentStatus === 'paid') {
+      numDpAmount = numAmount;
+    }
+
     if (showForm === 'income' && !formClientName.trim()) {
       setValError('Nama Klien / Project wajib diisi untuk transaksi masuk');
       return;
@@ -128,6 +165,7 @@ export default function Transactions({
       category: formCategory,
       client_name: showForm === 'income' ? formClientName.trim() : null,
       amount: numAmount,
+      dp_amount: showForm === 'income' && formPaymentStatus === 'partial' ? numDpAmount : (formPaymentStatus === 'paid' ? numAmount : 0),
       payment_status: showForm === 'income' ? formPaymentStatus : 'paid',
       notes: formNotes.trim()
     };
@@ -157,14 +195,21 @@ export default function Transactions({
   // Filtered transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
-      // 1. Search term (Client Name or Notes)
+      // 1. Search term (Client Name or Notes or Category)
       const matchesSearch = 
         (t.client_name && t.client_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (t.notes && t.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
         t.category.toLowerCase().includes(searchTerm.toLowerCase());
 
-      // 2. Type filter
-      const matchesType = filterType === 'all' ? true : t.type === filterType;
+      // 2. Type / Piutang filter
+      let matchesType = true;
+      if (filterType === 'income') {
+        matchesType = t.type === 'income';
+      } else if (filterType === 'expense') {
+        matchesType = t.type === 'expense';
+      } else if (filterType === 'piutang') {
+        matchesType = t.type === 'income' && t.payment_status !== 'paid';
+      }
 
       // 3. Category filter
       const matchesCategory = filterCategory === 'all' ? true : t.category === filterCategory;
@@ -178,23 +223,54 @@ export default function Transactions({
     });
   }, [transactions, searchTerm, filterType, filterCategory, startDate, endDate]);
 
+  // Counts for quick stats
+  const piutangCount = useMemo(() => {
+    return transactions.filter(t => t.type === 'income' && t.payment_status !== 'paid').length;
+  }, [transactions]);
+
   return (
     <div className="space-y-6" id="transactions-section">
       
+      {/* Category Management Modal */}
+      <CategoryManagerModal
+        isOpen={isCatModalOpen}
+        onClose={() => setIsCatModalOpen(false)}
+        onCategoriesChanged={handleCategoriesChanged}
+        initialType={showForm === 'expense' ? 'expense' : 'income'}
+      />
+
+      {/* Pelunasan Confirmation Modal */}
+      <PelunasanModal
+        transaction={pelunasanTx}
+        onClose={() => setPelunasanTx(null)}
+        onConfirmPelunasan={(updatedTx) => {
+          onUpdateTransaction(updatedTx);
+          setPelunasanTx(null);
+        }}
+      />
+
       {/* Top Banner & Fast Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Catatan Kas & Transaksi</h2>
           <p className="text-sm text-slate-500 mt-1">
-            Kelola pencatatan pengeluaran operasional dan pemasukan jasa agensi.
+            Kelola pencatatan pengeluaran operasional, pemasukan jasa, dan pelunasan piutang DP.
           </p>
         </div>
         
         {!showForm && (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={() => setIsCatModalOpen(true)}
+              className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs px-3.5 py-2.5 rounded-xl transition-all cursor-pointer"
+              title="Kelola Kategori Kustom"
+            >
+              <Tag className="w-3.5 h-3.5 text-indigo-600" />
+              Kelola Kategori
+            </button>
             <button
               onClick={() => setShowForm('income')}
-              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer"
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-xs hover:shadow transition-all cursor-pointer"
               id="btn-tambah-pemasukan"
             >
               <PlusCircle className="w-4 h-4" />
@@ -202,7 +278,7 @@ export default function Transactions({
             </button>
             <button
               onClick={() => setShowForm('expense')}
-              className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer"
+              className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-xs hover:shadow transition-all cursor-pointer"
               id="btn-tambah-pengeluaran"
             >
               <PlusCircle className="w-4 h-4" />
@@ -229,7 +305,7 @@ export default function Transactions({
             </div>
             <button
               onClick={handleCancel}
-              className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-700 transition-colors"
+              className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -255,41 +331,62 @@ export default function Transactions({
                     required
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                   />
                 </div>
               </div>
 
-              {/* Field: Kategori */}
+              {/* Field: Kategori + Quick Manage Button */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Kategori</label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Kategori</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCatModalOpen(true)}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    + Kelola
+                  </button>
+                </div>
                 <div className="relative">
                   <BookOpen className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <select
                     value={formCategory}
                     onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm appearance-none cursor-pointer"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm appearance-none cursor-pointer"
                   >
                     {showForm === 'income' 
-                      ? INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)
-                      : EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)
+                      ? categoriesList.income.map(c => <option key={c} value={c}>{c}</option>)
+                      : categoriesList.expense.map(c => <option key={c} value={c}>{c}</option>)
                     }
                   </select>
                 </div>
               </div>
 
-              {/* Field: Nominal (Rp) */}
+              {/* Field: Total Nominal (Rp) */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Nominal / Jumlah (Rp)</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  {showForm === 'income' ? 'Total Nilai Deal / Project (Rp)' : 'Nominal / Jumlah (Rp)'}
+                </label>
                 <div className="relative">
                   <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type="number"
                     required
-                    placeholder="Contoh: 1500000"
+                    placeholder="Contoh: 3000000"
                     value={formAmount}
-                    onChange={(e) => setFormAmount(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold placeholder:font-normal focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormAmount(val);
+                      // Auto calculate 50% DP default if DP empty
+                      if (showForm === 'income' && formPaymentStatus === 'partial' && (!formDpAmount || Number(formDpAmount) === Math.round(Number(formAmount) / 2))) {
+                        const num = Number(val);
+                        if (!isNaN(num) && num > 0) {
+                          setFormDpAmount(String(Math.round(num / 2)));
+                        }
+                      }
+                    }}
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold placeholder:font-normal focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                   />
                 </div>
               </div>
@@ -305,7 +402,7 @@ export default function Transactions({
                       placeholder="Masukkan nama klien atau instansi"
                       value={formClientName}
                       onChange={(e) => setFormClientName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                 </div>
@@ -319,13 +416,40 @@ export default function Transactions({
                     <CheckCircle className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <select
                       value={formPaymentStatus}
-                      onChange={(e) => setFormPaymentStatus(e.target.value as any)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm appearance-none cursor-pointer"
+                      onChange={(e) => {
+                        const newStatus = e.target.value as any;
+                        setFormPaymentStatus(newStatus);
+                        if (newStatus === 'partial' && !formDpAmount) {
+                          const num = Number(formAmount);
+                          if (!isNaN(num) && num > 0) {
+                            setFormDpAmount(String(Math.round(num / 2)));
+                          }
+                        }
+                      }}
+                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm appearance-none cursor-pointer"
                     >
-                      <option value="paid">Lunas (Paid)</option>
-                      <option value="partial">DP / Sebagian (Partial)</option>
-                      <option value="unpaid">Belum Lunas (Unpaid)</option>
+                      <option value="paid">Lunas (100% Paid)</option>
+                      <option value="partial">Bayar Sebagian (DP)</option>
+                      <option value="unpaid">Belum Lunas (Unpaid / Piutang)</option>
                     </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Field: Nominal DP (Pemasukan with Status 'partial' Only) */}
+              {showForm === 'income' && formPaymentStatus === 'partial' && (
+                <div className="space-y-1.5 animate-fade-in">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-amber-600">Nominal DP Masuk (Rp)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
+                    <input
+                      type="number"
+                      required
+                      placeholder="Masukkan nominal DP yang dibayarkan"
+                      value={formDpAmount}
+                      onChange={(e) => setFormDpAmount(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-amber-50/50 border border-amber-300 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none text-sm"
+                    />
                   </div>
                 </div>
               )}
@@ -339,12 +463,25 @@ export default function Transactions({
                     placeholder="Tambahkan detail deskripsi transaksi ini..."
                     value={formNotes}
                     onChange={(e) => setFormNotes(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                   />
                 </div>
               </div>
 
             </div>
+
+            {/* Live Calculation Feedback for DP Partial Income */}
+            {showForm === 'income' && formPaymentStatus === 'partial' && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1 text-amber-900 animate-fade-in">
+                <div className="flex flex-wrap items-center justify-between gap-2 font-medium">
+                  <span>Pemasukan Kas Tercatat (DP): <strong className="text-emerald-700">{formatIDR(Number(formDpAmount) || 0)}</strong></span>
+                  <span>Sisa Piutang: <strong className="text-amber-700">{formatIDR(Math.max(0, (Number(formAmount) || 0) - (Number(formDpAmount) || 0)))}</strong></span>
+                </div>
+                <p className="text-[11px] text-amber-700">
+                  * Uang yang masuk ke catatan pemasukan kas hanya sebesar nominal DP. Sisa piutang dapat dilunasi kapan saja melalui tombol "Pencet Lunas".
+                </p>
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex justify-end gap-3 pt-2">
@@ -357,7 +494,7 @@ export default function Transactions({
               </button>
               <button
                 type="submit"
-                className={`px-5 py-2.5 rounded-xl font-bold text-sm text-white shadow-sm hover:shadow transition-all cursor-pointer ${
+                className={`px-5 py-2.5 rounded-xl font-bold text-sm text-white shadow-xs hover:shadow transition-all cursor-pointer ${
                   showForm === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
                 }`}
               >
@@ -382,15 +519,15 @@ export default function Transactions({
               placeholder="Cari nama klien, deskripsi catatan, atau kategori..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
             />
           </div>
 
           {/* Type Filter Tabs */}
-          <div className="flex gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200 self-start md:self-auto">
+          <div className="flex flex-wrap gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200 self-start md:self-auto">
             <button
               onClick={() => { setFilterType('all'); setFilterCategory('all'); }}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 filterType === 'all' 
                   ? 'bg-white text-indigo-600 shadow-xs' 
                   : 'text-slate-600 hover:text-slate-900'
@@ -400,7 +537,7 @@ export default function Transactions({
             </button>
             <button
               onClick={() => { setFilterType('income'); setFilterCategory('all'); }}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 filterType === 'income' 
                   ? 'bg-white text-emerald-600 shadow-xs' 
                   : 'text-slate-600 hover:text-slate-900'
@@ -410,13 +547,24 @@ export default function Transactions({
             </button>
             <button
               onClick={() => { setFilterType('expense'); setFilterCategory('all'); }}
-              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 filterType === 'expense' 
                   ? 'bg-white text-rose-600 shadow-xs' 
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               Keluar (Pengeluaran)
+            </button>
+            <button
+              onClick={() => { setFilterType('piutang'); setFilterCategory('all'); }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                filterType === 'piutang' 
+                  ? 'bg-amber-500 text-white shadow-xs' 
+                  : 'text-amber-700 hover:bg-amber-100/60'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              Piutang / DP Pending ({piutangCount})
             </button>
           </div>
 
@@ -431,21 +579,21 @@ export default function Transactions({
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
             >
               <option value="all">Semua Kategori</option>
-              {filterType === 'all' && (
+              {(filterType === 'all' || filterType === 'piutang') && (
                 <>
                   <optgroup label="Kategori Pemasukan">
-                    {INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    {categoriesList.income.map(c => <option key={c} value={c}>{c}</option>)}
                   </optgroup>
                   <optgroup label="Kategori Pengeluaran">
-                    {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    {categoriesList.expense.map(c => <option key={c} value={c}>{c}</option>)}
                   </optgroup>
                 </>
               )}
-              {filterType === 'income' && INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              {filterType === 'expense' && EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              {filterType === 'income' && categoriesList.income.map(c => <option key={c} value={c}>{c}</option>)}
+              {filterType === 'expense' && categoriesList.expense.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
 
@@ -500,7 +648,7 @@ export default function Transactions({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px] text-left border-collapse">
+          <table className="w-full min-w-[750px] text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-400 text-xs font-semibold uppercase tracking-wider border-b border-slate-100">
                 <th className="py-3 px-6">Tanggal</th>
@@ -508,8 +656,8 @@ export default function Transactions({
                 <th className="py-3 px-6">Kategori</th>
                 <th className="py-3 px-6">Klien & Keterangan</th>
                 <th className="py-3 px-6">Status Pembayaran</th>
-                <th className="py-3 px-6 text-right">Nominal</th>
-                <th className="py-3 px-6 text-center">Aksi</th>
+                <th className="py-3 px-6 text-right">Pemasukan Kas</th>
+                <th className="py-3 px-6 text-center">Aksi & Pelunasan</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 text-sm">
@@ -520,91 +668,131 @@ export default function Transactions({
                   </td>
                 </tr>
               ) : (
-                filteredTransactions.map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50/40 transition-colors group">
-                    
-                    {/* Tanggal */}
-                    <td className="py-4 px-6 text-slate-500 font-medium whitespace-nowrap">
-                      {formatShortDate(t.date)}
-                    </td>
+                filteredTransactions.map((t) => {
+                  const actualReceived = getActualIncomeAmount(t);
+                  const remainingPiutang = getPiutangAmount(t);
 
-                    {/* Jenis */}
-                    <td className="py-4 px-6 whitespace-nowrap">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        t.type === 'income' 
-                          ? 'bg-emerald-50 text-emerald-700' 
-                          : 'bg-rose-50 text-rose-700'
-                      }`}>
-                        {t.type === 'income' ? 'Masuk' : 'Keluar'}
-                      </span>
-                    </td>
+                  return (
+                    <tr key={t.id} className="hover:bg-slate-50/40 transition-colors group">
+                      
+                      {/* Tanggal */}
+                      <td className="py-4 px-6 text-slate-500 font-medium whitespace-nowrap">
+                        {formatShortDate(t.date)}
+                      </td>
 
-                    {/* Kategori */}
-                    <td className="py-4 px-6 text-slate-700 font-medium whitespace-nowrap">
-                      {t.category}
-                    </td>
-
-                    {/* Detail / Notes */}
-                    <td className="py-4 px-6">
-                      <div className="max-w-[240px]">
-                        <p className="font-semibold text-slate-800 truncate">{t.client_name || '-'}</p>
-                        <p className="text-xs text-slate-400 truncate mt-0.5">{t.notes || 'Tanpa keterangan tambahan'}</p>
-                      </div>
-                    </td>
-
-                    {/* Status */}
-                    <td className="py-4 px-6 whitespace-nowrap">
-                      {t.type === 'income' ? (
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${
-                          t.payment_status === 'paid' 
-                            ? 'bg-emerald-100 text-emerald-800' 
-                            : t.payment_status === 'partial' 
-                            ? 'bg-amber-100 text-amber-800' 
-                            : 'bg-rose-100 text-rose-800'
+                      {/* Jenis */}
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          t.type === 'income' 
+                            ? 'bg-emerald-50 text-emerald-700' 
+                            : 'bg-rose-50 text-rose-700'
                         }`}>
-                          {t.payment_status === 'paid' ? 'Lunas' : t.payment_status === 'partial' ? 'DP (Sebagian)' : 'Belum Lunas'}
+                          {t.type === 'income' ? 'Masuk' : 'Keluar'}
                         </span>
-                      ) : (
-                        <span className="text-slate-400 text-xs">-</span>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* Jumlah */}
-                    <td className={`py-4 px-6 text-right font-bold whitespace-nowrap ${
-                      t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
-                    }`}>
-                      {t.type === 'income' ? '+' : '-'} {formatIDR(t.amount)}
-                    </td>
+                      {/* Kategori */}
+                      <td className="py-4 px-6 text-slate-700 font-medium whitespace-nowrap">
+                        {t.category}
+                      </td>
 
-                    {/* Aksi */}
-                    <td className="py-4 px-6 text-center whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => {
-                            setEditingTransaction(t);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                          className="p-1.5 bg-slate-50 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 border border-slate-200 rounded-lg transition-colors cursor-pointer"
-                          title="Edit Transaksi"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`Yakin ingin menghapus transaksi ini?\nKlien: ${t.client_name || '-'}\nNominal: ${formatIDR(t.amount)}`)) {
-                              onDeleteTransaction(t.id);
-                            }
-                          }}
-                          className="p-1.5 bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 rounded-lg transition-colors cursor-pointer"
-                          title="Hapus Transaksi"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
+                      {/* Detail / Notes */}
+                      <td className="py-4 px-6">
+                        <div className="max-w-[240px]">
+                          <p className="font-semibold text-slate-800 truncate">{t.client_name || '-'}</p>
+                          <p className="text-xs text-slate-400 truncate mt-0.5">{t.notes || 'Tanpa keterangan tambahan'}</p>
+                        </div>
+                      </td>
 
-                  </tr>
-                ))
+                      {/* Status */}
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        {t.type === 'income' ? (
+                          <div className="space-y-1">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold ${
+                              t.payment_status === 'paid' 
+                                ? 'bg-emerald-100 text-emerald-800' 
+                                : t.payment_status === 'partial' 
+                                ? 'bg-amber-100 text-amber-800' 
+                                : 'bg-rose-100 text-rose-800'
+                            }`}>
+                              {t.payment_status === 'paid' ? 'Lunas' : t.payment_status === 'partial' ? 'DP (Sebagian)' : 'Belum Lunas'}
+                            </span>
+                            {t.payment_status !== 'paid' && remainingPiutang > 0 && (
+                              <p className="text-[11px] font-semibold text-amber-600">
+                                Sisa Piutang: {formatIDR(remainingPiutang)}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs">-</span>
+                        )}
+                      </td>
+
+                      {/* Jumlah (Kas Real) */}
+                      <td className="py-4 px-6 text-right whitespace-nowrap">
+                        {t.type === 'income' ? (
+                          <div>
+                            <span className="font-bold text-emerald-600">
+                              + {formatIDR(actualReceived)}
+                            </span>
+                            {t.payment_status === 'partial' && (
+                              <p className="text-[10px] text-slate-400 font-medium">
+                                Total Deal: {formatIDR(t.amount)}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="font-bold text-rose-600">
+                            - {formatIDR(t.amount)}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Aksi & Pelunasan */}
+                      <td className="py-4 px-6 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-2">
+                          
+                          {/* Tombol Pencet Lunas (if piutang / partial / unpaid) */}
+                          {t.type === 'income' && t.payment_status !== 'paid' && (
+                            <button
+                              onClick={() => setPelunasanTx(t)}
+                              className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-2xs hover:shadow cursor-pointer"
+                              title="Pencet Lunas (Pelunasan Piutang)"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              Pencet Lunas
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => {
+                              setEditingTransaction(t);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="p-1.5 bg-slate-50 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Transaksi"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Yakin ingin menghapus transaksi ini?\nKlien: ${t.client_name || '-'}\nNominal: ${formatIDR(t.amount)}`)) {
+                                onDeleteTransaction(t.id);
+                              }
+                            }}
+                            className="p-1.5 bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                            title="Hapus Transaksi"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+
+                        </div>
+                      </td>
+
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
