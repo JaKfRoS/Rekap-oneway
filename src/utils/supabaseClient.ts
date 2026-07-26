@@ -34,6 +34,47 @@ function getPastOrCurrentConfig(): SupabaseConfig | null {
   return { url: HARDCODED_URL, anonKey: HARDCODED_KEY, isEnabled: true };
 }
 
+export const CONFIG_CATEGORY_ROW_ID = '00000000-0000-0000-0000-000000000000';
+export const CATEGORIES_STORAGE_KEY = 'pembukuan_custom_categories';
+
+export async function saveCategoriesToSupabase(categories: { income: string[]; expense: string[] }): Promise<{ success: boolean; error?: string }> {
+  localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
+
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: true };
+
+  try {
+    const payload: any = {
+      id: CONFIG_CATEGORY_ROW_ID,
+      date: '2000-01-01',
+      type: 'income',
+      category: '__SYSTEM_CATEGORIES_CONFIG__',
+      client_name: '__SYSTEM_CATEGORIES_CONFIG__',
+      amount: 0,
+      dp_amount: null,
+      payment_status: 'paid',
+      notes: JSON.stringify(categories)
+    };
+
+    let { error } = await supabase.from('transactions').upsert(payload);
+    if (error && isDpAmountColumnError(error)) {
+      delete payload.dp_amount;
+      const retry = await supabase.from('transactions').upsert(payload);
+      error = retry.error;
+    }
+
+    if (error) {
+      console.warn("Gagal menyimpan kategori ke Supabase config row:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.warn("Error saat menyimpan kategori ke Supabase:", err);
+    return { success: false, error: err.message || String(err) };
+  }
+}
+
 // Format date helper for database/display
 export function formatDate(dateStr: string): string {
   return dateStr; // Keep as string YYYY-MM-DD
@@ -96,8 +137,32 @@ export async function getTransactions(): Promise<{ data: Transaction[]; source: 
       }
 
       if (data) {
-        // Map any field mappings if necessary
-        const mappedData: Transaction[] = data.map(item => {
+        let remoteCategories: { income: string[]; expense: string[] } | null = null;
+
+        // Filter out system config rows and extract remote categories if present
+        const actualDbRows = data.filter(item => {
+          if (
+            item.id === CONFIG_CATEGORY_ROW_ID ||
+            item.category === '__SYSTEM_CATEGORIES_CONFIG__' ||
+            item.client_name === '__SYSTEM_CATEGORIES_CONFIG__'
+          ) {
+            if (item.notes) {
+              try {
+                const parsed = JSON.parse(item.notes);
+                if (parsed && Array.isArray(parsed.income) && Array.isArray(parsed.expense)) {
+                  remoteCategories = parsed;
+                }
+              } catch (e) {
+                console.error("Gagal parse config row categories:", e);
+              }
+            }
+            return false;
+          }
+          return true;
+        });
+
+        // Map transaction items
+        const mappedData: Transaction[] = actualDbRows.map(item => {
           const { dpAmount, cleanNotes } = parseDpAmountFromItem(item, localMap);
           return {
             id: item.id,
@@ -112,6 +177,58 @@ export async function getTransactions(): Promise<{ data: Transaction[]; source: 
             notes: cleanNotes
           };
         });
+
+        // Sync and merge categories into local storage
+        if (remoteCategories) {
+          const incomeSet = new Set<string>(remoteCategories.income);
+          const expenseSet = new Set<string>(remoteCategories.expense);
+
+          mappedData.forEach(t => {
+            if (t.category && typeof t.category === 'string') {
+              const cat = t.category.trim();
+              if (cat) {
+                if (t.type === 'income') incomeSet.add(cat);
+                if (t.type === 'expense') expenseSet.add(cat);
+              }
+            }
+          });
+
+          const merged = {
+            income: Array.from(incomeSet),
+            expense: Array.from(expenseSet)
+          };
+          localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(merged));
+        } else {
+          const stored = localStorage.getItem(CATEGORIES_STORAGE_KEY);
+          let currentIncome = ['Pembuatan Toko', 'Handle Toko', 'Shopee Affiliate', 'Lain-lain'];
+          let currentExpense = ['Operational', 'Ads Spend', 'Freelancer / Sub-kontraktor', 'Tool / Langganan Software', 'Lain-lain'];
+          if (stored) {
+            try {
+              const p = JSON.parse(stored);
+              if (Array.isArray(p.income) && p.income.length > 0) currentIncome = p.income;
+              if (Array.isArray(p.expense) && p.expense.length > 0) currentExpense = p.expense;
+            } catch (e) {}
+          }
+
+          const incomeSet = new Set<string>(currentIncome);
+          const expenseSet = new Set<string>(currentExpense);
+
+          mappedData.forEach(t => {
+            if (t.category && typeof t.category === 'string') {
+              const cat = t.category.trim();
+              if (cat) {
+                if (t.type === 'income') incomeSet.add(cat);
+                if (t.type === 'expense') expenseSet.add(cat);
+              }
+            }
+          });
+
+          const merged = {
+            income: Array.from(incomeSet),
+            expense: Array.from(expenseSet)
+          };
+          localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(merged));
+        }
         
         // Save to local storage for caching/backup
         localStorage.setItem(STORAGE_KEY, JSON.stringify(mappedData));

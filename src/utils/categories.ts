@@ -1,6 +1,7 @@
 import { Transaction } from './dummyData';
+import { saveCategoriesToSupabase, CATEGORIES_STORAGE_KEY } from './supabaseClient';
 
-const CATEGORIES_KEY = 'pembukuan_custom_categories';
+const CATEGORIES_KEY = CATEGORIES_STORAGE_KEY;
 
 export interface CategoryData {
   income: string[];
@@ -65,6 +66,8 @@ export function getCategories(transactions: Transaction[] = []): CategoryData {
 
 export function saveCategories(categories: CategoryData): void {
   localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+  // Sync categories to Supabase Cloud in the background
+  saveCategoriesToSupabase(categories);
 }
 
 export function addCategory(type: 'income' | 'expense', name: string): CategoryData {
