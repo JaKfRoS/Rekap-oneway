@@ -62,11 +62,11 @@ export default function App() {
   const isFetchingRef = useRef<boolean>(false);
 
   // Fetch transactions on load and whenever config changes
-  const loadData = async (demoOverride?: boolean, userOverride?: any) => {
+  const loadData = async (demoOverride?: boolean, userOverride?: any, force: boolean = false) => {
     const activeDemo = demoOverride !== undefined ? demoOverride : isDemoMode;
     const activeUser = userOverride !== undefined ? userOverride : currentUser;
 
-    if (isFetchingRef.current) return;
+    if (isFetchingRef.current && !force) return;
     isFetchingRef.current = true;
     setLoading(true);
     setErrorMsg(null);
@@ -191,42 +191,68 @@ export default function App() {
   // CRUD Operations
   const handleAddTransaction = async (newTx: Omit<Transaction, 'id' | 'created_at'>) => {
     setLoading(true);
-    const res = await addTransaction(newTx, isDemoMode, currentUser?.id);
-    if (res.success && res.data) {
-      await loadData();
-      if (res.error) {
-        alert(res.error);
+    try {
+      const res = await addTransaction(newTx, isDemoMode, currentUser?.id);
+      if (res.success && res.data) {
+        const created = res.data;
+        // Optimistically update React state immediately
+        setTransactions(prev => [created, ...prev.filter(t => t.id !== created.id)]);
+        // Force refresh from storage/database
+        await loadData(isDemoMode, currentUser, true);
+        if (res.error) {
+          alert(res.error);
+        }
+      } else {
+        alert(`Gagal menambah transaksi: ${res.error}`);
       }
-    } else {
-      alert(`Gagal menambah transaksi: ${res.error}`);
+    } catch (e: any) {
+      alert(`Terjadi kesalahan: ${e.message || e}`);
+    } finally {
       setLoading(false);
     }
   };
 
   const handleUpdateTransaction = async (updatedTx: Transaction) => {
     setLoading(true);
-    const res = await updateTransaction(updatedTx, isDemoMode, currentUser?.id);
-    if (res.success && res.data) {
-      await loadData();
-      if (res.error) {
-        alert(res.error);
+    try {
+      const res = await updateTransaction(updatedTx, isDemoMode, currentUser?.id);
+      if (res.success && res.data) {
+        const updated = res.data;
+        // Optimistically update React state
+        setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t));
+        // Force refresh
+        await loadData(isDemoMode, currentUser, true);
+        if (res.error) {
+          alert(res.error);
+        }
+      } else {
+        alert(`Gagal memperbarui transaksi: ${res.error}`);
       }
-    } else {
-      alert(`Gagal memperbarui transaksi: ${res.error}`);
+    } catch (e: any) {
+      alert(`Terjadi kesalahan: ${e.message || e}`);
+    } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteTransaction = async (id: string) => {
     setLoading(true);
-    const res = await deleteTransaction(id, isDemoMode, currentUser?.id);
-    if (res.success) {
-      await loadData();
-      if (res.error) {
-        alert(res.error);
+    try {
+      const res = await deleteTransaction(id, isDemoMode, currentUser?.id);
+      if (res.success) {
+        // Optimistically update React state
+        setTransactions(prev => prev.filter(t => t.id !== id));
+        // Force refresh
+        await loadData(isDemoMode, currentUser, true);
+        if (res.error) {
+          alert(res.error);
+        }
+      } else {
+        alert(`Gagal menghapus transaksi: ${res.error}`);
       }
-    } else {
-      alert(`Gagal menghapus transaksi: ${res.error}`);
+    } catch (e: any) {
+      alert(`Terjadi kesalahan: ${e.message || e}`);
+    } finally {
       setLoading(false);
     }
   };
@@ -234,9 +260,16 @@ export default function App() {
   const handleResetAllData = async () => {
     if (window.confirm('Apakah Anda yakin ingin MENGHAPUS SEMUA DATA transaksi? Semua catatan pemasukan dan pengeluaran Anda akan dikosongkan secara permanen.')) {
       setLoading(true);
-      await clearAllData(isDemoMode, currentUser?.id);
-      await loadData();
-      alert('Semua data transaksi telah berhasil dihapus!');
+      try {
+        await clearAllData(isDemoMode, currentUser?.id);
+        setTransactions([]);
+        await loadData(isDemoMode, currentUser, true);
+        alert('Semua data transaksi telah berhasil dihapus!');
+      } catch (e: any) {
+        alert(`Gagal menghapus data: ${e.message || e}`);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -388,49 +421,60 @@ export default function App() {
                 })}
               </nav>
 
-              {/* Reset Data Button */}
+              {/* Reset Data Icon Button */}
               <button
                 onClick={handleResetAllData}
                 title="Hapus / Reset Seluruh Data Transaksi"
-                className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-all border border-rose-200/60 cursor-pointer"
+                aria-label="Hapus Semua Data"
+                className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-all border border-rose-200/60 cursor-pointer shadow-xs hover:scale-105 active:scale-95 shrink-0"
               >
-                <Trash2 className="w-4 h-4 text-rose-600" />
-                <span className="hidden xl:inline">Hapus Semua Data</span>
+                <Trash2 className="w-4 h-4" />
               </button>
 
-              {/* User Auth Status Button */}
+              {/* User Auth Status Icon Buttons */}
               {currentUser ? (
-                <div className="flex items-center gap-2 bg-slate-100 border border-slate-200/80 pl-3 pr-1 py-1 rounded-xl text-xs">
-                  <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span className="font-bold text-slate-700 truncate max-w-[120px] xl:max-w-[180px]">{currentUser.email}</span>
+                <div className="flex items-center gap-1 bg-slate-100/90 border border-slate-200/80 p-1 rounded-xl shrink-0">
+                  <div 
+                    className="p-1.5 bg-emerald-50 text-emerald-700 rounded-lg cursor-help flex items-center justify-center"
+                    title={`Terhubung: ${currentUser.email}`}
+                  >
+                    <UserCheck className="w-4 h-4 text-emerald-600" />
+                  </div>
                   <button
                     onClick={handleLogout}
-                    title="Keluar dari Akun"
+                    title={`Keluar dari Akun (${currentUser.email})`}
+                    aria-label="Keluar"
                     className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
                   >
-                    <LogOut className="w-3.5 h-3.5" />
+                    <LogOut className="w-4 h-4" />
                   </button>
                 </div>
               ) : isDemoMode ? (
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1.5 bg-amber-50 border border-amber-200/80 text-amber-800 rounded-xl text-[11px] font-bold">
-                    Mode Demo (Lokal)
-                  </span>
+                <div className="flex items-center gap-1 bg-slate-100/90 border border-slate-200/80 p-1 rounded-xl shrink-0">
+                  <div 
+                    className="px-2 py-1 bg-amber-50 text-amber-800 rounded-lg text-[10px] font-extrabold border border-amber-200/60 flex items-center gap-1 cursor-help"
+                    title="Mode Demo (Data Lokal)"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <span>Demo</span>
+                  </div>
                   <button
                     onClick={() => setIsDemoMode(false)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    title="Masuk ke Akun Cloud"
+                    aria-label="Masuk"
+                    className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all shadow-xs cursor-pointer"
                   >
-                    <LogIn className="w-3.5 h-3.5" />
-                    <span>Masuk</span>
+                    <LogIn className="w-4 h-4" />
                   </button>
                 </div>
               ) : (
                 <button
                   onClick={() => setIsAuthModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow cursor-pointer"
+                  title="Masuk / Daftar Akun"
+                  aria-label="Masuk / Daftar"
+                  className="p-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-xs hover:scale-105 active:scale-95 cursor-pointer shrink-0"
                 >
                   <LogIn className="w-4 h-4" />
-                  <span>Masuk / Daftar</span>
                 </button>
               )}
             </div>
