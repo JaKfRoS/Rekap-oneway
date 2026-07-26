@@ -169,6 +169,34 @@ function setLocalUserTransactions(userId: string, data: Transaction[]): void {
   localStorage.setItem(getUserStorageKey(userId), JSON.stringify(data));
 }
 
+function getDeletedUserTransactionIds(userId: string): Set<string> {
+  if (!userId) return new Set();
+  const stored = localStorage.getItem(`pembukuan_deleted_ids_${userId}`);
+  if (stored) {
+    try {
+      const arr = JSON.parse(stored);
+      if (Array.isArray(arr)) return new Set(arr);
+    } catch (e) {}
+  }
+  return new Set();
+}
+
+function addDeletedUserTransactionId(userId: string, id: string): void {
+  if (!userId) return;
+  const set = getDeletedUserTransactionIds(userId);
+  set.add(id);
+  localStorage.setItem(`pembukuan_deleted_ids_${userId}`, JSON.stringify(Array.from(set)));
+}
+
+function removeDeletedUserTransactionId(userId: string, id: string): void {
+  if (!userId) return;
+  const set = getDeletedUserTransactionIds(userId);
+  if (set.has(id)) {
+    set.delete(id);
+    localStorage.setItem(`pembukuan_deleted_ids_${userId}`, JSON.stringify(Array.from(set)));
+  }
+}
+
 // Core functions to fetch, add, update, delete
 export async function getTransactions(
   isDemoMode: boolean = false,
@@ -185,16 +213,19 @@ export async function getTransactions(
     return { data: [], source: 'local' };
   }
 
+  const localData = getLocalUserTransactions(userId);
+  const deletedIds = getDeletedUserTransactionIds(userId);
+
   const supabase = getSupabaseClient();
   
   if (!supabase) {
-    const localData = getLocalUserTransactions(userId);
-    return { data: localData, source: 'local', error: 'Database Supabase tidak terhubung. Menggunakan data lokal.' };
+    const filteredLocal = localData.filter(t => !deletedIds.has(t.id));
+    return { data: filteredLocal, source: 'local', error: 'Database Supabase tidak terhubung. Menggunakan data lokal.' };
   }
 
   try {
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Koneksi Supabase memakan waktu terlalu lama (Timeout).')), 6000)
+      setTimeout(() => reject(new Error('Koneksi Supabase memakan waktu terlalu lama (Timeout).')), 5000)
     );
 
     const fetchPromise = supabase
@@ -235,6 +266,11 @@ export async function getTransactions(
           return false;
         }
 
+        // Filter out deleted items
+        if (deletedIds.has(item.id)) {
+          return false;
+        }
+
         return true;
       });
 
@@ -256,22 +292,30 @@ export async function getTransactions(
         };
       });
 
+      // Merge DB rows with local user cache to preserve recent local additions/updates
+      const dbIds = new Set(mappedData.map(t => t.id));
+      const missingLocal = localData.filter(t => !dbIds.has(t.id) && !deletedIds.has(t.id));
+
+      const mergedData = [...mappedData, ...missingLocal].sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
       // Update user-specific local cache
-      setLocalUserTransactions(userId, mappedData);
-      return { data: mappedData, source: 'supabase' };
+      setLocalUserTransactions(userId, mergedData);
+      return { data: mergedData, source: 'supabase' };
     }
   } catch (err: any) {
     console.error("Gagal menarik data dari Supabase:", err);
-    const localData = getLocalUserTransactions(userId);
+    const filteredLocal = localData.filter(t => !deletedIds.has(t.id));
     return { 
-      data: localData, 
+      data: filteredLocal, 
       source: 'local', 
       error: `Supabase error: ${err.message || err}. Menampilkan data lokal.` 
     };
   }
 
-  const localData = getLocalUserTransactions(userId);
-  return { data: localData, source: 'local' };
+  const filteredLocal = localData.filter(t => !deletedIds.has(t.id));
+  return { data: filteredLocal, source: 'local' };
 }
 
 export async function addTransaction(
@@ -300,9 +344,17 @@ export async function addTransaction(
     return { success: false, error: 'Silakan masuk ke akun Anda terlebih dahulu.' };
   }
 
+  // Ensure item is removed from deleted tracking if re-added
+  removeDeletedUserTransactionId(userId, id);
+
+  // ALWAYS save to local user cache first so data is instantly persistent
+  const localTx = getLocalUserTransactions(userId);
+  const updatedLocal = [newTransaction, ...localTx.filter(t => t.id !== id)];
+  setLocalUserTransactions(userId, updatedLocal);
+
   const supabase = getSupabaseClient();
   if (!supabase) {
-    return { success: false, error: 'Database Supabase tidak terhubung.' };
+    return { success: true, data: newTransaction, error: 'Database Supabase tidak terhubung. Transaksi disimpan secara lokal.' };
   }
 
   try {
@@ -337,20 +389,17 @@ export async function addTransaction(
     }
 
     if (error) {
-      console.error("Gagal menyimpan ke Supabase:", error);
-      return { success: false, error: `Gagal menyimpan ke database Supabase: ${error.message}` };
+      console.warn("Gagal menyimpan ke Supabase cloud, transaksi disimpan secara lokal:", error);
+      return { success: true, data: newTransaction, error: `Tersimpan secara lokal (Peringatan Cloud: ${error.message})` };
     }
-
-    // Update local user cache
-    const localTx = getLocalUserTransactions(userId);
-    setLocalUserTransactions(userId, [newTransaction, ...localTx]);
 
     return { success: true, data: newTransaction };
   } catch (err: any) {
-    console.error("Error menambahkan ke Supabase:", err);
+    console.warn("Error menyimpan ke Supabase cloud, transaksi disimpan secara lokal:", err);
     return { 
-      success: false, 
-      error: `Gagal menyimpan ke database Supabase: ${err.message || err}` 
+      success: true, 
+      data: newTransaction, 
+      error: `Tersimpan secara lokal (Peringatan Cloud: ${err.message || err})` 
     };
   }
 }
@@ -371,9 +420,17 @@ export async function updateTransaction(
     return { success: false, error: 'Silakan masuk ke akun Anda terlebih dahulu.' };
   }
 
+  // Ensure item is not tracked as deleted
+  removeDeletedUserTransactionId(userId, transaction.id);
+
+  // ALWAYS update local user cache first
+  const localTx = getLocalUserTransactions(userId);
+  const updatedLocal = localTx.map(item => item.id === transaction.id ? transaction : item);
+  setLocalUserTransactions(userId, updatedLocal);
+
   const supabase = getSupabaseClient();
   if (!supabase) {
-    return { success: false, error: 'Database Supabase tidak terhubung.' };
+    return { success: true, data: transaction, error: 'Database Supabase tidak terhubung. Perubahan disimpan secara lokal.' };
   }
 
   try {
@@ -405,21 +462,17 @@ export async function updateTransaction(
     }
 
     if (error) {
-      console.error("Gagal mengupdate di Supabase:", error);
-      return { success: false, error: `Gagal mengupdate database Supabase: ${error.message}` };
+      console.warn("Gagal mengupdate di Supabase cloud, perubahan disimpan secara lokal:", error);
+      return { success: true, data: transaction, error: `Perubahan tersimpan lokal (Peringatan Cloud: ${error.message})` };
     }
-
-    // Update local user cache
-    const localTx = getLocalUserTransactions(userId);
-    const updatedLocal = localTx.map(item => item.id === transaction.id ? transaction : item);
-    setLocalUserTransactions(userId, updatedLocal);
 
     return { success: true, data: transaction };
   } catch (err: any) {
-    console.error("Error mengupdate di Supabase:", err);
+    console.warn("Error mengupdate di Supabase cloud, perubahan disimpan secara lokal:", err);
     return { 
-      success: false, 
-      error: `Gagal mengupdate database Supabase: ${err.message || err}` 
+      success: true, 
+      data: transaction, 
+      error: `Perubahan tersimpan lokal (Peringatan Cloud: ${err.message || err})` 
     };
   }
 }
@@ -440,9 +493,17 @@ export async function deleteTransaction(
     return { success: false, error: 'Silakan masuk ke akun Anda terlebih dahulu.' };
   }
 
+  // Mark ID as deleted locally
+  addDeletedUserTransactionId(userId, id);
+
+  // ALWAYS remove from local user cache
+  const localTx = getLocalUserTransactions(userId);
+  const updatedLocal = localTx.filter(item => item.id !== id);
+  setLocalUserTransactions(userId, updatedLocal);
+
   const supabase = getSupabaseClient();
   if (!supabase) {
-    return { success: false, error: 'Database Supabase tidak terhubung.' };
+    return { success: true };
   }
 
   try {
@@ -452,22 +513,13 @@ export async function deleteTransaction(
       .eq('id', id);
 
     if (error) {
-      console.error("Gagal menghapus dari Supabase:", error);
-      return { success: false, error: `Gagal menghapus dari database Supabase: ${error.message}` };
+      console.warn("Gagal menghapus dari Supabase cloud, item tetap dihapus dari tampilan lokal:", error);
     }
-
-    // Update local user cache
-    const localTx = getLocalUserTransactions(userId);
-    const updatedLocal = localTx.filter(item => item.id !== id);
-    setLocalUserTransactions(userId, updatedLocal);
 
     return { success: true };
   } catch (err: any) {
-    console.error("Error menghapus dari Supabase:", err);
-    return { 
-      success: false, 
-      error: `Gagal menghapus dari database Supabase: ${err.message || err}` 
-    };
+    console.warn("Error menghapus dari Supabase cloud, item tetap dihapus dari tampilan lokal:", err);
+    return { success: true };
   }
 }
 

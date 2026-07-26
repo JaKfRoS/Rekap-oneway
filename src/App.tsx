@@ -197,11 +197,11 @@ export default function App() {
         const created = res.data;
         // Optimistically update React state immediately
         setTransactions(prev => [created, ...prev.filter(t => t.id !== created.id)]);
-        // Force refresh from storage/database
-        await loadData(isDemoMode, currentUser, true);
         if (res.error) {
-          alert(res.error);
+          setErrorMsg(res.error);
         }
+        // Non-blocking sync to keep DB in step without flickering UI
+        loadData(isDemoMode, currentUser, true);
       } else {
         alert(`Gagal menambah transaksi: ${res.error}`);
       }
@@ -218,13 +218,13 @@ export default function App() {
       const res = await updateTransaction(updatedTx, isDemoMode, currentUser?.id);
       if (res.success && res.data) {
         const updated = res.data;
-        // Optimistically update React state
+        // Optimistically update React state immediately
         setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t));
-        // Force refresh
-        await loadData(isDemoMode, currentUser, true);
         if (res.error) {
-          alert(res.error);
+          setErrorMsg(res.error);
         }
+        // Non-blocking sync
+        loadData(isDemoMode, currentUser, true);
       } else {
         alert(`Gagal memperbarui transaksi: ${res.error}`);
       }
@@ -240,13 +240,13 @@ export default function App() {
     try {
       const res = await deleteTransaction(id, isDemoMode, currentUser?.id);
       if (res.success) {
-        // Optimistically update React state
+        // Optimistically update React state immediately
         setTransactions(prev => prev.filter(t => t.id !== id));
-        // Force refresh
-        await loadData(isDemoMode, currentUser, true);
         if (res.error) {
-          alert(res.error);
+          setErrorMsg(res.error);
         }
+        // Non-blocking sync
+        loadData(isDemoMode, currentUser, true);
       } else {
         alert(`Gagal menghapus transaksi: ${res.error}`);
       }
