@@ -235,7 +235,7 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs relative overflow-hidden group hover:border-indigo-200 transition-all duration-200" id="card-piutang">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Piutang Dagang / Pending</p>
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Piutang / Pending</p>
               <h3 className="text-xl font-bold text-amber-600 mt-2">{formatIDR(stats.pendingInvoicesVal)}</h3>
               <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
