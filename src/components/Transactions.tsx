@@ -44,8 +44,12 @@ export default function Transactions({
   // Navigation & Form Toggle
   const [showForm, setShowForm] = useState<'income' | 'expense' | null>(null);
 
-  // Custom Categories state
-  const [categoriesList, setCategoriesList] = useState<CategoryData>(() => getCategories());
+  // Custom Categories state & version trigger
+  const [customCatVersion, setCustomCatVersion] = useState(0);
+  const categoriesList = useMemo(() => {
+    return getCategories(transactions);
+  }, [transactions, customCatVersion]);
+
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
 
   // Pelunasan Modal state
@@ -72,8 +76,7 @@ export default function Transactions({
 
   // Refresh categories from storage
   const handleCategoriesChanged = () => {
-    const updated = getCategories();
-    setCategoriesList(updated);
+    setCustomCatVersion(prev => prev + 1);
   };
 
   // Auto-set default category when form type changes
@@ -584,12 +587,10 @@ export default function Transactions({
               <option value="all">Semua Kategori</option>
               {(filterType === 'all' || filterType === 'piutang') && (
                 <>
-                  <optgroup label="Kategori Pemasukan">
-                    {categoriesList.income.map(c => <option key={c} value={c}>{c}</option>)}
-                  </optgroup>
-                  <optgroup label="Kategori Pengeluaran">
-                    {categoriesList.expense.map(c => <option key={c} value={c}>{c}</option>)}
-                  </optgroup>
+                  <option disabled value="">── Kategori Pemasukan ──</option>
+                  {categoriesList.income.map(c => <option key={`inc-${c}`} value={c}>Masuk: {c}</option>)}
+                  <option disabled value="">── Kategori Pengeluaran ──</option>
+                  {categoriesList.expense.map(c => <option key={`exp-${c}`} value={c}>Keluar: {c}</option>)}
                 </>
               )}
               {filterType === 'income' && categoriesList.income.map(c => <option key={c} value={c}>{c}</option>)}
@@ -647,7 +648,107 @@ export default function Transactions({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile View: Cards */}
+        <div className="block md:hidden divide-y divide-slate-100">
+          {filteredTransactions.length === 0 ? (
+            <div className="py-10 text-center text-slate-400 text-sm">
+              Tidak ditemukan transaksi yang cocok dengan kriteria filter Anda.
+            </div>
+          ) : (
+            filteredTransactions.map((t) => {
+              const actualReceived = getActualIncomeAmount(t);
+              const remainingPiutang = getPiutangAmount(t);
+
+              return (
+                <div key={`m-${t.id}`} className="p-4 hover:bg-slate-50/50 transition-colors space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                          t.type === 'income' 
+                            ? 'bg-emerald-50 text-emerald-700' 
+                            : 'bg-rose-50 text-rose-700'
+                        }`}>
+                          {t.type === 'income' ? 'Masuk' : 'Keluar'}
+                        </span>
+                        <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md text-[11px] font-bold">
+                          {t.category}
+                        </span>
+                      </div>
+                      <p className="font-bold text-slate-800 text-sm">{t.client_name || t.category}</p>
+                      <p className="text-xs text-slate-500">{t.notes || 'Tanpa keterangan'}</p>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className={`block font-extrabold text-sm ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {t.type === 'income' ? '+' : '-'} {formatIDR(t.type === 'income' ? actualReceived : t.amount)}
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        {formatShortDate(t.date)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {t.type === 'income' && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-50 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          t.payment_status === 'paid' 
+                            ? 'bg-emerald-100 text-emerald-800' 
+                            : t.payment_status === 'partial' 
+                            ? 'bg-amber-100 text-amber-800' 
+                            : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {t.payment_status === 'paid' ? 'Lunas' : t.payment_status === 'partial' ? 'DP (Sebagian)' : 'Belum Lunas'}
+                        </span>
+                        {t.payment_status !== 'paid' && remainingPiutang > 0 && (
+                          <span className="font-semibold text-amber-600 text-[11px]">
+                            Sisa: {formatIDR(remainingPiutang)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-50">
+                    {t.type === 'income' && t.payment_status !== 'paid' && (
+                      <button
+                        onClick={() => setPelunasanTx(t)}
+                        className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Lunas
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setEditingTransaction(t);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="p-1.5 bg-slate-50 hover:bg-indigo-50 text-slate-600 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Yakin ingin menghapus transaksi ini?\nKlien: ${t.client_name || '-'}\nNominal: ${formatIDR(t.amount)}`)) {
+                          onDeleteTransaction(t.id);
+                        }
+                      }}
+                      className="p-1.5 bg-slate-50 hover:bg-rose-50 text-rose-600 border border-slate-200 rounded-lg text-xs font-semibold cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full min-w-[750px] text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-400 text-xs font-semibold uppercase tracking-wider border-b border-slate-100">

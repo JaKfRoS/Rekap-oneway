@@ -1,3 +1,5 @@
+import { Transaction } from './dummyData';
+
 const CATEGORIES_KEY = 'pembukuan_custom_categories';
 
 export interface CategoryData {
@@ -20,23 +22,45 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   'Lain-lain'
 ];
 
-export function getCategories(): CategoryData {
+export function getCategories(transactions: Transaction[] = []): CategoryData {
+  let income = [...DEFAULT_INCOME_CATEGORIES];
+  let expense = [...DEFAULT_EXPENSE_CATEGORIES];
+
   const stored = localStorage.getItem(CATEGORIES_KEY);
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      return {
-        income: Array.isArray(parsed.income) && parsed.income.length > 0 ? parsed.income : DEFAULT_INCOME_CATEGORIES,
-        expense: Array.isArray(parsed.expense) && parsed.expense.length > 0 ? parsed.expense : DEFAULT_EXPENSE_CATEGORIES
-      };
+      if (Array.isArray(parsed.income) && parsed.income.length > 0) {
+        income = [...parsed.income];
+      }
+      if (Array.isArray(parsed.expense) && parsed.expense.length > 0) {
+        expense = [...parsed.expense];
+      }
     } catch (e) {
       console.error('Error parsing categories:', e);
     }
   }
-  return {
-    income: [...DEFAULT_INCOME_CATEGORIES],
-    expense: [...DEFAULT_EXPENSE_CATEGORIES]
-  };
+
+  // Merge any categories present in actual transaction data (e.g., from Supabase Cloud)
+  if (transactions && Array.isArray(transactions)) {
+    transactions.forEach(t => {
+      if (t.category && typeof t.category === 'string') {
+        const cat = t.category.trim();
+        if (!cat) return;
+        if (t.type === 'income') {
+          if (!income.includes(cat)) {
+            income.push(cat);
+          }
+        } else if (t.type === 'expense') {
+          if (!expense.includes(cat)) {
+            expense.push(cat);
+          }
+        }
+      }
+    });
+  }
+
+  return { income, expense };
 }
 
 export function saveCategories(categories: CategoryData): void {
