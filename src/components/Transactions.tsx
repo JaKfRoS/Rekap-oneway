@@ -254,7 +254,7 @@ export default function Transactions({
         <div>
           <h2 className="text-xl font-bold text-slate-800">Catatan Kas & Transaksi</h2>
           <p className="text-sm text-slate-500 mt-1">
-            Kelola pencatatan pengeluaran operasional, pemasukan jasa, dan pelunasan piutang DP.
+            Kelola pencatatan pengeluaran operasional, pemasukan usaha, dan pelunasan piutang DP.
           </p>
         </div>
         

@@ -176,7 +176,7 @@ export default function App() {
               </div>
               <div>
                 <span className="block font-black text-slate-900 leading-none text-base tracking-tight">KASUSAHA</span>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Aplikasi Pembukuan</span>
+                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Aplikasi Pembukuan Sederhana</span>
               </div>
             </div>
 
@@ -362,8 +362,8 @@ export default function App() {
       {/* Standard Footer */}
       <footer className="bg-white border-t border-slate-100 py-6 mt-12 text-center text-xs text-slate-400 no-print">
         <div className="max-w-7xl mx-auto px-4">
-          <p className="font-medium">KasUsaha &bull; Sistem Pembukuan Keuangan Usaha Jasa Freelance & Agensi &copy; 2026</p>
-          <p className="mt-1 opacity-80">Didukung oleh arsitektur Cloud PostgreSQL Supabase & React SPA.</p>
+          <p className="font-medium">KasUsaha &bull; Bebas ribet, kelola kas jadi lebih jelas.</p>
+          <p className="mt-1 opacity-80">&copy; 2026 OneWay media. All rights reserved.</p>
         </div>
       </footer>
 
