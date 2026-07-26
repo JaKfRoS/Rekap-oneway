@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Transaction, INITIAL_TRANSACTIONS } from './dummyData';
-import { DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, LEGACY_CATEGORIES, CATEGORIES_STORAGE_KEY } from './categories';
+import { DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, CATEGORIES_STORAGE_KEY } from './categories';
 
 const STORAGE_KEY = 'pembukuan_transactions';
 const CONFIG_KEY = 'pembukuan_supabase_config';

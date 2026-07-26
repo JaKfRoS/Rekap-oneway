@@ -13,13 +13,15 @@ interface CategoryManagerModalProps {
   onClose: () => void;
   onCategoriesChanged: () => void;
   initialType?: 'income' | 'expense';
+  userId?: string;
 }
 
 export default function CategoryManagerModal({
   isOpen,
   onClose,
   onCategoriesChanged,
-  initialType = 'income'
+  initialType = 'income',
+  userId
 }: CategoryManagerModalProps) {
   const [activeTab, setActiveTab] = useState<'income' | 'expense'>(initialType);
   const [categories, setCategories] = useState<CategoryData>({ income: [], expense: [] });
@@ -35,10 +37,10 @@ export default function CategoryManagerModal({
       setActiveTab(initialType);
       refreshData();
     }
-  }, [isOpen, initialType]);
+  }, [isOpen, initialType, userId]);
 
   const refreshData = () => {
-    const data = getCategories();
+    const data = getCategories(userId);
     setCategories(data);
     setErrorMsg('');
   };
@@ -57,7 +59,7 @@ export default function CategoryManagerModal({
       return;
     }
 
-    addCategory(activeTab, trimmed);
+    addCategory(activeTab, trimmed, userId);
     setNewCatName('');
     refreshData();
     onCategoriesChanged();
@@ -83,7 +85,7 @@ export default function CategoryManagerModal({
       return;
     }
 
-    updateCategory(activeTab, oldName, trimmed);
+    updateCategory(activeTab, oldName, trimmed, userId);
     setEditingCatName(null);
     refreshData();
     onCategoriesChanged();
@@ -98,7 +100,7 @@ export default function CategoryManagerModal({
     }
 
     if (window.confirm(`Yakin ingin menghapus kategori "${catName}"?`)) {
-      deleteCategory(activeTab, catName);
+      deleteCategory(activeTab, catName, userId);
       refreshData();
       onCategoriesChanged();
     }

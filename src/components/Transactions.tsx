@@ -31,6 +31,7 @@ interface TransactionsProps {
   onDeleteTransaction: (id: string) => void;
   editingTransaction: Transaction | null;
   setEditingTransaction: (tx: Transaction | null) => void;
+  userId?: string;
 }
 
 export default function Transactions({
@@ -39,7 +40,8 @@ export default function Transactions({
   onUpdateTransaction,
   onDeleteTransaction,
   editingTransaction,
-  setEditingTransaction
+  setEditingTransaction,
+  userId
 }: TransactionsProps) {
   // Navigation & Form Toggle
   const [showForm, setShowForm] = useState<'income' | 'expense' | null>(null);
@@ -47,8 +49,8 @@ export default function Transactions({
   // Custom Categories state & version trigger
   const [customCatVersion, setCustomCatVersion] = useState(0);
   const categoriesList = useMemo(() => {
-    return getCategories(transactions);
-  }, [transactions, customCatVersion]);
+    return getCategories(userId);
+  }, [customCatVersion, userId]);
 
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
 
@@ -240,6 +242,7 @@ export default function Transactions({
         onClose={() => setIsCatModalOpen(false)}
         onCategoriesChanged={handleCategoriesChanged}
         initialType={showForm === 'expense' ? 'expense' : 'income'}
+        userId={userId}
       />
 
       {/* Pelunasan Confirmation Modal */}

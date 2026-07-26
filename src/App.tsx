@@ -635,6 +635,7 @@ export default function App() {
               onDeleteTransaction={handleDeleteTransaction}
               editingTransaction={editingTransaction}
               setEditingTransaction={setEditingTransaction}
+              userId={currentUser?.id}
             />
           )}
 
