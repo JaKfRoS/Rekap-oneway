@@ -16,7 +16,8 @@ import {
   getTransactions, 
   addTransaction, 
   updateTransaction, 
-  deleteTransaction 
+  deleteTransaction,
+  getSupabaseClient
 } from './utils/supabaseClient';
 import { formatIDR, getActualIncomeAmount } from './utils/formatters';
 
@@ -62,27 +63,56 @@ export default function App() {
   useEffect(() => {
     loadData();
 
-    // Ensure favicon is applied and updated in browser tab
+    // Re-fetch data automatically when user switches back to this tab or comes online
+    const handleFocus = () => loadData();
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleFocus);
+
+    // Attach Realtime Supabase Subscription if connected
+    const supabase = getSupabaseClient();
+    let channel: any = null;
+    if (supabase) {
+      try {
+        channel = supabase
+          .channel('db-realtime-sync')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+            loadData();
+          })
+          .subscribe();
+      } catch (e) {
+        console.warn("Realtime subscription notice:", e);
+      }
+    }
+
+    // Ensure favicon is applied and updated in browser tab using SVG
     try {
       const existingFavicons = document.querySelectorAll("link[rel*='icon']");
       existingFavicons.forEach(el => el.remove());
 
-      const logoUrl = '/logo.png?v=2';
+      const svgFaviconUrl = '/favicon.svg?v=3';
 
       const link = document.createElement('link');
-      link.type = 'image/png';
+      link.type = 'image/svg+xml';
       link.rel = 'icon';
-      link.href = logoUrl;
+      link.href = svgFaviconUrl;
       document.head.appendChild(link);
 
       const shortcutLink = document.createElement('link');
-      shortcutLink.type = 'image/png';
+      shortcutLink.type = 'image/svg+xml';
       shortcutLink.rel = 'shortcut icon';
-      shortcutLink.href = logoUrl;
+      shortcutLink.href = svgFaviconUrl;
       document.head.appendChild(shortcutLink);
     } catch (e) {
       console.error(e);
     }
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleFocus);
+      if (channel && supabase) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, []);
 
   // CRUD Operations
@@ -167,13 +197,10 @@ export default function App() {
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
               <div className="w-10 h-10 bg-white border border-slate-200/80 rounded-xl flex items-center justify-center shadow-xs hover:shadow transition-all overflow-hidden p-1">
                 <img 
-                  src="/logo.png" 
+                  src="/favicon.svg" 
                   alt="Logo KasUsaha" 
                   className="w-full h-full object-contain rounded-lg" 
                   referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://lh3.googleusercontent.com/d/1w0I5o1pXndY0C5VRXF378FI7QiGvXyKb';
-                  }}
                 />
               </div>
               <div>

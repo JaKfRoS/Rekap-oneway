@@ -119,132 +119,133 @@ function formatNotesWithDp(notes: string, dpAmount?: number | null, paymentStatu
 // Core functions to fetch, add, update, delete
 export async function getTransactions(): Promise<{ data: Transaction[]; source: 'supabase' | 'local'; error?: string }> {
   const supabase = getSupabaseClient();
-  const localData = getLocalTransactions();
-  const localMap = new Map<string, number | null>();
-  localData.forEach(item => {
-    if (item.dp_amount != null) localMap.set(item.id, item.dp_amount);
-  });
   
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .order('date', { ascending: false });
-
-      if (error) {
-        throw error;
-      }
-
-      if (data) {
-        let remoteCategories: { income: string[]; expense: string[] } | null = null;
-
-        // Filter out system config rows and extract remote categories if present
-        const actualDbRows = data.filter(item => {
-          if (
-            item.id === CONFIG_CATEGORY_ROW_ID ||
-            item.category === '__SYSTEM_CATEGORIES_CONFIG__' ||
-            item.client_name === '__SYSTEM_CATEGORIES_CONFIG__'
-          ) {
-            if (item.notes) {
-              try {
-                const parsed = JSON.parse(item.notes);
-                if (parsed && Array.isArray(parsed.income) && Array.isArray(parsed.expense)) {
-                  remoteCategories = parsed;
-                }
-              } catch (e) {
-                console.error("Gagal parse config row categories:", e);
-              }
-            }
-            return false;
-          }
-          return true;
-        });
-
-        // Map transaction items
-        const mappedData: Transaction[] = actualDbRows.map(item => {
-          const { dpAmount, cleanNotes } = parseDpAmountFromItem(item, localMap);
-          return {
-            id: item.id,
-            created_at: item.created_at,
-            date: item.date,
-            type: item.type as 'income' | 'expense',
-            category: item.category,
-            client_name: item.client_name,
-            amount: Number(item.amount),
-            dp_amount: dpAmount,
-            payment_status: item.payment_status as 'paid' | 'unpaid' | 'partial',
-            notes: cleanNotes
-          };
-        });
-
-        // Sync and merge categories into local storage
-        if (remoteCategories) {
-          const incomeSet = new Set<string>(remoteCategories.income);
-          const expenseSet = new Set<string>(remoteCategories.expense);
-
-          mappedData.forEach(t => {
-            if (t.category && typeof t.category === 'string') {
-              const cat = t.category.trim();
-              if (cat) {
-                if (t.type === 'income') incomeSet.add(cat);
-                if (t.type === 'expense') expenseSet.add(cat);
-              }
-            }
-          });
-
-          const merged = {
-            income: Array.from(incomeSet),
-            expense: Array.from(expenseSet)
-          };
-          localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(merged));
-        } else {
-          const stored = localStorage.getItem(CATEGORIES_STORAGE_KEY);
-          let currentIncome = ['Pembuatan Toko', 'Handle Toko', 'Shopee Affiliate', 'Lain-lain'];
-          let currentExpense = ['Operational', 'Ads Spend', 'Freelancer / Sub-kontraktor', 'Tool / Langganan Software', 'Lain-lain'];
-          if (stored) {
-            try {
-              const p = JSON.parse(stored);
-              if (Array.isArray(p.income) && p.income.length > 0) currentIncome = p.income;
-              if (Array.isArray(p.expense) && p.expense.length > 0) currentExpense = p.expense;
-            } catch (e) {}
-          }
-
-          const incomeSet = new Set<string>(currentIncome);
-          const expenseSet = new Set<string>(currentExpense);
-
-          mappedData.forEach(t => {
-            if (t.category && typeof t.category === 'string') {
-              const cat = t.category.trim();
-              if (cat) {
-                if (t.type === 'income') incomeSet.add(cat);
-                if (t.type === 'expense') expenseSet.add(cat);
-              }
-            }
-          });
-
-          const merged = {
-            income: Array.from(incomeSet),
-            expense: Array.from(expenseSet)
-          };
-          localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(merged));
-        }
-        
-        // Save to local storage for caching/backup
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(mappedData));
-        return { data: mappedData, source: 'supabase' };
-      }
-    } catch (err: any) {
-      console.error("Gagal menarik data dari Supabase, beralih ke Lokal:", err);
-      return { 
-        data: localData, 
-        source: 'local', 
-        error: `Supabase error: ${err.message || err}. Menampilkan data cadangan lokal.` 
-      };
-    }
+  if (!supabase) {
+    const localData = getLocalTransactions();
+    return { data: localData, source: 'local', error: 'Database Supabase tidak terhubung. Menggunakan data lokal.' };
   }
 
-  // Fallback to Local Storage
+  try {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .order('date', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    if (data) {
+      let remoteCategories: { income: string[]; expense: string[] } | null = null;
+
+      // Filter out system config rows and extract remote categories if present
+      const actualDbRows = data.filter(item => {
+        if (
+          item.id === CONFIG_CATEGORY_ROW_ID ||
+          item.category === '__SYSTEM_CATEGORIES_CONFIG__' ||
+          item.client_name === '__SYSTEM_CATEGORIES_CONFIG__'
+        ) {
+          if (item.notes) {
+            try {
+              const parsed = JSON.parse(item.notes);
+              if (parsed && Array.isArray(parsed.income) && Array.isArray(parsed.expense)) {
+                remoteCategories = parsed;
+              }
+            } catch (e) {
+              console.error("Gagal parse config row categories:", e);
+            }
+          }
+          return false;
+        }
+        return true;
+      });
+
+      const localMap = new Map<string, number | null>();
+
+      // Map transaction items
+      const mappedData: Transaction[] = actualDbRows.map(item => {
+        const { dpAmount, cleanNotes } = parseDpAmountFromItem(item, localMap);
+        return {
+          id: item.id,
+          created_at: item.created_at,
+          date: item.date,
+          type: item.type as 'income' | 'expense',
+          category: item.category,
+          client_name: item.client_name,
+          amount: Number(item.amount),
+          dp_amount: dpAmount,
+          payment_status: item.payment_status as 'paid' | 'unpaid' | 'partial',
+          notes: cleanNotes
+        };
+      });
+
+      // Sync and merge categories into local storage
+      if (remoteCategories) {
+        const incomeSet = new Set<string>(remoteCategories.income);
+        const expenseSet = new Set<string>(remoteCategories.expense);
+
+        mappedData.forEach(t => {
+          if (t.category && typeof t.category === 'string') {
+            const cat = t.category.trim();
+            if (cat) {
+              if (t.type === 'income') incomeSet.add(cat);
+              if (t.type === 'expense') expenseSet.add(cat);
+            }
+          }
+        });
+
+        const merged = {
+          income: Array.from(incomeSet),
+          expense: Array.from(expenseSet)
+        };
+        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(merged));
+      } else {
+        const stored = localStorage.getItem(CATEGORIES_STORAGE_KEY);
+        let currentIncome = ['Pembuatan Toko', 'Handle Toko', 'Shopee Affiliate', 'Lain-lain'];
+        let currentExpense = ['Operational', 'Ads Spend', 'Freelancer / Sub-kontraktor', 'Tool / Langganan Software', 'Lain-lain'];
+        if (stored) {
+          try {
+            const p = JSON.parse(stored);
+            if (Array.isArray(p.income) && p.income.length > 0) currentIncome = p.income;
+            if (Array.isArray(p.expense) && p.expense.length > 0) currentExpense = p.expense;
+          } catch (e) {}
+        }
+
+        const incomeSet = new Set<string>(currentIncome);
+        const expenseSet = new Set<string>(currentExpense);
+
+        mappedData.forEach(t => {
+          if (t.category && typeof t.category === 'string') {
+            const cat = t.category.trim();
+            if (cat) {
+              if (t.type === 'income') incomeSet.add(cat);
+              if (t.type === 'expense') expenseSet.add(cat);
+            }
+          }
+        });
+
+        const merged = {
+          income: Array.from(incomeSet),
+          expense: Array.from(expenseSet)
+        };
+        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(merged));
+      }
+      
+      // Save to local storage for backup
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(mappedData));
+      return { data: mappedData, source: 'supabase' };
+    }
+  } catch (err: any) {
+    console.error("Gagal menarik data langsung dari Supabase:", err);
+    const localData = getLocalTransactions();
+    return { 
+      data: localData, 
+      source: 'local', 
+      error: `Supabase error: ${err.message || err}. Menampilkan data lokal.` 
+    };
+  }
+
+  const localData = getLocalTransactions();
   return { data: localData, source: 'local' };
 }
 
@@ -257,12 +258,11 @@ function getLocalTransactions(): Transaction[] {
       // corrupt
     }
   }
-  // Seed initial data if empty
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_TRANSACTIONS));
-  return INITIAL_TRANSACTIONS;
+  return [];
 }
 
 export async function addTransaction(transaction: Omit<Transaction, 'id' | 'created_at'>): Promise<{ success: boolean; data?: Transaction; error?: string }> {
+  const supabase = getSupabaseClient();
   const id = crypto.randomUUID();
   const created_at = new Date().toISOString();
   
@@ -272,134 +272,139 @@ export async function addTransaction(transaction: Omit<Transaction, 'id' | 'crea
     created_at
   };
 
-  // 1. Save to local storage
-  const localTransactions = getLocalTransactions();
-  const updatedLocal = [newTransaction, ...localTransactions];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLocal));
-
-  // 2. Save to Supabase if configured
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const notesForDb = formatNotesWithDp(newTransaction.notes, newTransaction.dp_amount, newTransaction.payment_status);
-
-      const payload: any = {
-        id,
-        created_at,
-        date: newTransaction.date,
-        type: newTransaction.type,
-        category: newTransaction.category,
-        client_name: newTransaction.client_name,
-        amount: newTransaction.amount,
-        dp_amount: newTransaction.dp_amount || null,
-        payment_status: newTransaction.payment_status,
-        notes: notesForDb
-      };
-
-      let { error } = await supabase
-        .from('transactions')
-        .insert([payload]);
-
-      if (error && isDpAmountColumnError(error)) {
-        delete payload.dp_amount;
-        const retry = await supabase.from('transactions').insert([payload]);
-        error = retry.error;
-      }
-
-      if (error) throw error;
-      return { success: true, data: newTransaction };
-    } catch (err: any) {
-      console.error("Gagal menambahkan ke Supabase:", err);
-      return { 
-        success: true, 
-        data: newTransaction, 
-        error: `Transaksi tersimpan di lokal, namun gagal sync ke Supabase: ${err.message || err}` 
-      };
-    }
+  if (!supabase) {
+    return { success: false, error: 'Database Supabase tidak terhubung.' };
   }
 
-  return { success: true, data: newTransaction };
+  try {
+    const notesForDb = formatNotesWithDp(newTransaction.notes, newTransaction.dp_amount, newTransaction.payment_status);
+
+    const payload: any = {
+      id,
+      created_at,
+      date: newTransaction.date,
+      type: newTransaction.type,
+      category: newTransaction.category,
+      client_name: newTransaction.client_name,
+      amount: newTransaction.amount,
+      dp_amount: newTransaction.dp_amount || null,
+      payment_status: newTransaction.payment_status,
+      notes: notesForDb
+    };
+
+    let { error } = await supabase
+      .from('transactions')
+      .insert([payload]);
+
+    if (error && isDpAmountColumnError(error)) {
+      delete payload.dp_amount;
+      const retry = await supabase.from('transactions').insert([payload]);
+      error = retry.error;
+    }
+
+    if (error) {
+      console.error("Gagal menyimpan ke Supabase:", error);
+      return { success: false, error: `Gagal menyimpan ke database Supabase: ${error.message}` };
+    }
+
+    // Update local cache
+    const localTransactions = getLocalTransactions();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([newTransaction, ...localTransactions]));
+
+    return { success: true, data: newTransaction };
+  } catch (err: any) {
+    console.error("Error menambahkan ke Supabase:", err);
+    return { 
+      success: false, 
+      error: `Gagal menyimpan ke database Supabase: ${err.message || err}` 
+    };
+  }
 }
 
 export async function updateTransaction(transaction: Transaction): Promise<{ success: boolean; data?: Transaction; error?: string }> {
-  // 1. Update in local storage
-  const localTransactions = getLocalTransactions();
-  const updatedLocal = localTransactions.map(item => item.id === transaction.id ? transaction : item);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLocal));
-
-  // 2. Update in Supabase if configured
   const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const notesForDb = formatNotesWithDp(transaction.notes, transaction.dp_amount, transaction.payment_status);
+  if (!supabase) {
+    return { success: false, error: 'Database Supabase tidak terhubung.' };
+  }
 
-      const payload: any = {
-        date: transaction.date,
-        type: transaction.type,
-        category: transaction.category,
-        client_name: transaction.client_name,
-        amount: transaction.amount,
-        dp_amount: transaction.dp_amount || null,
-        payment_status: transaction.payment_status,
-        notes: notesForDb
-      };
+  try {
+    const notesForDb = formatNotesWithDp(transaction.notes, transaction.dp_amount, transaction.payment_status);
 
-      let { error } = await supabase
+    const payload: any = {
+      date: transaction.date,
+      type: transaction.type,
+      category: transaction.category,
+      client_name: transaction.client_name,
+      amount: transaction.amount,
+      dp_amount: transaction.dp_amount || null,
+      payment_status: transaction.payment_status,
+      notes: notesForDb
+    };
+
+    let { error } = await supabase
+      .from('transactions')
+      .update(payload)
+      .eq('id', transaction.id);
+
+    if (error && isDpAmountColumnError(error)) {
+      delete payload.dp_amount;
+      const retry = await supabase
         .from('transactions')
         .update(payload)
         .eq('id', transaction.id);
-
-      if (error && isDpAmountColumnError(error)) {
-        delete payload.dp_amount;
-        const retry = await supabase
-          .from('transactions')
-          .update(payload)
-          .eq('id', transaction.id);
-        error = retry.error;
-      }
-
-      if (error) throw error;
-      return { success: true, data: transaction };
-    } catch (err: any) {
-      console.error("Gagal mengupdate ke Supabase:", err);
-      return { 
-        success: true, 
-        data: transaction, 
-        error: `Transaksi terupdate di lokal, namun gagal sync ke Supabase: ${err.message || err}` 
-      };
+      error = retry.error;
     }
-  }
 
-  return { success: true, data: transaction };
+    if (error) {
+      console.error("Gagal mengupdate di Supabase:", error);
+      return { success: false, error: `Gagal mengupdate database Supabase: ${error.message}` };
+    }
+
+    // Update local cache
+    const localTransactions = getLocalTransactions();
+    const updatedLocal = localTransactions.map(item => item.id === transaction.id ? transaction : item);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLocal));
+
+    return { success: true, data: transaction };
+  } catch (err: any) {
+    console.error("Error mengupdate di Supabase:", err);
+    return { 
+      success: false, 
+      error: `Gagal mengupdate database Supabase: ${err.message || err}` 
+    };
+  }
 }
 
 export async function deleteTransaction(id: string): Promise<{ success: boolean; error?: string }> {
-  // 1. Delete in local storage
-  const localTransactions = getLocalTransactions();
-  const updatedLocal = localTransactions.filter(item => item.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLocal));
-
-  // 2. Delete in Supabase if configured
   const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      const { error } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      return { success: true };
-    } catch (err: any) {
-      console.error("Gagal menghapus dari Supabase:", err);
-      return { 
-        success: true, 
-        error: `Transaksi terhapus di lokal, namun gagal sync ke Supabase: ${err.message || err}` 
-      };
-    }
+  if (!supabase) {
+    return { success: false, error: 'Database Supabase tidak terhubung.' };
   }
 
-  return { success: true };
+  try {
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error("Gagal menghapus dari Supabase:", error);
+      return { success: false, error: `Gagal menghapus dari database Supabase: ${error.message}` };
+    }
+
+    // Update local cache
+    const localTransactions = getLocalTransactions();
+    const updatedLocal = localTransactions.filter(item => item.id !== id);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLocal));
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("Error menghapus dari Supabase:", err);
+    return { 
+      success: false, 
+      error: `Gagal menghapus dari database Supabase: ${err.message || err}` 
+    };
+  }
 }
 
 // Function to sync local transactions to Supabase (Upload all missing)
