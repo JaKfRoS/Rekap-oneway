@@ -13,7 +13,6 @@ import {
   TrendingUp, 
   BarChart3, 
   Receipt, 
-  Code2, 
   ArrowRight,
   Sparkles
 } from 'lucide-react';
@@ -131,13 +130,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={onOpenSqlModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition-all"
-          >
-            <Code2 className="w-4 h-4 text-indigo-400" />
-            <span className="hidden sm:inline">Script SQL Supabase</span>
-          </button>
         </div>
       </header>
 

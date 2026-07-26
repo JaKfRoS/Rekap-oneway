@@ -1,6 +1,7 @@
 import { Transaction } from './dummyData';
-import { saveCategoriesToSupabase, CATEGORIES_STORAGE_KEY } from './supabaseClient';
+import { saveCategoriesToSupabase } from './supabaseClient';
 
+export const CATEGORIES_STORAGE_KEY = 'pembukuan_custom_categories';
 const CATEGORIES_KEY = CATEGORIES_STORAGE_KEY;
 
 export interface CategoryData {
@@ -9,17 +10,33 @@ export interface CategoryData {
 }
 
 export const DEFAULT_INCOME_CATEGORIES = [
-  'Pembuatan Toko',
-  'Handle Toko',
-  'Shopee Affiliate',
-  'Lain-lain'
+  'Penjualan Produk',
+  'Jasa & Layanan',
+  'Komisi & Affiliate',
+  'Pendapatan Lain-lain'
 ];
 
 export const DEFAULT_EXPENSE_CATEGORIES = [
+  'Operasional Usaha',
+  'Bahan Baku / Stok',
+  'Gaji & Penjaga Toko',
+  'Sewa Tempat / Ruko',
+  'Listrik, Air & Internet',
+  'Iklan & Pemasaran',
+  'Transportasi & Logistik',
+  'Pengeluaran Lain-lain'
+];
+
+export const LEGACY_CATEGORIES = [
+  'Pembuatan Toko',
+  'Handle Toko',
+  'Shopee Affiliate',
   'Operational',
   'Ads Spend',
   'Freelancer / Sub-kontraktor',
   'Tool / Langganan Software',
+  'Konsultasi',
+  'Toko Shopee',
   'Lain-lain'
 ];
 
@@ -31,23 +48,29 @@ export function getCategories(transactions: Transaction[] = []): CategoryData {
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed.income) && parsed.income.length > 0) {
-        income = [...parsed.income];
+      if (Array.isArray(parsed.income)) {
+        const cleanedIncome = parsed.income.filter((c: string) => !LEGACY_CATEGORIES.includes(c));
+        if (cleanedIncome.length > 0) {
+          income = Array.from(new Set([...DEFAULT_INCOME_CATEGORIES, ...cleanedIncome]));
+        }
       }
-      if (Array.isArray(parsed.expense) && parsed.expense.length > 0) {
-        expense = [...parsed.expense];
+      if (Array.isArray(parsed.expense)) {
+        const cleanedExpense = parsed.expense.filter((c: string) => !LEGACY_CATEGORIES.includes(c));
+        if (cleanedExpense.length > 0) {
+          expense = Array.from(new Set([...DEFAULT_EXPENSE_CATEGORIES, ...cleanedExpense]));
+        }
       }
     } catch (e) {
       console.error('Error parsing categories:', e);
     }
   }
 
-  // Merge any categories present in actual transaction data (e.g., from Supabase Cloud)
+  // Merge any custom categories present in actual transaction data
   if (transactions && Array.isArray(transactions)) {
     transactions.forEach(t => {
       if (t.category && typeof t.category === 'string') {
         const cat = t.category.trim();
-        if (!cat) return;
+        if (!cat || LEGACY_CATEGORIES.includes(cat)) return;
         if (t.type === 'income') {
           if (!income.includes(cat)) {
             income.push(cat);
@@ -64,10 +87,12 @@ export function getCategories(transactions: Transaction[] = []): CategoryData {
   return { income, expense };
 }
 
-export function saveCategories(categories: CategoryData): void {
+export function saveCategories(categories: CategoryData, userId?: string): void {
   localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
-  // Sync categories to Supabase Cloud in the background
-  saveCategoriesToSupabase(categories);
+  // Sync categories to Supabase Cloud in the background if userId exists
+  if (userId) {
+    saveCategoriesToSupabase(categories, userId);
+  }
 }
 
 export function addCategory(type: 'income' | 'expense', name: string): CategoryData {

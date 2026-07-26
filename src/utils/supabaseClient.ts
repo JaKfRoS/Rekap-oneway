@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Transaction, INITIAL_TRANSACTIONS } from './dummyData';
+import { DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, LEGACY_CATEGORIES, CATEGORIES_STORAGE_KEY } from './categories';
 
 const STORAGE_KEY = 'pembukuan_transactions';
 const CONFIG_KEY = 'pembukuan_supabase_config';
@@ -46,17 +47,18 @@ function getPastOrCurrentConfig(): SupabaseConfig | null {
 }
 
 export const CONFIG_CATEGORY_ROW_ID = '00000000-0000-0000-0000-000000000000';
-export const CATEGORIES_STORAGE_KEY = 'pembukuan_custom_categories';
 
-export async function saveCategoriesToSupabase(categories: { income: string[]; expense: string[] }): Promise<{ success: boolean; error?: string }> {
-  localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
+export async function saveCategoriesToSupabase(categories: { income: string[]; expense: string[] }, userId?: string): Promise<{ success: boolean; error?: string }> {
+  const storageKey = userId ? `pembukuan_categories_${userId}` : CATEGORIES_STORAGE_KEY;
+  localStorage.setItem(storageKey, JSON.stringify(categories));
 
   const supabase = getSupabaseClient();
   if (!supabase) return { success: true };
 
   try {
+    const configId = userId ? `${CONFIG_CATEGORY_ROW_ID}_${userId}` : CONFIG_CATEGORY_ROW_ID;
     const payload: any = {
-      id: CONFIG_CATEGORY_ROW_ID,
+      id: configId,
       date: '2000-01-01',
       type: 'income',
       category: '__SYSTEM_CATEGORIES_CONFIG__',
@@ -66,6 +68,10 @@ export async function saveCategoriesToSupabase(categories: { income: string[]; e
       payment_status: 'paid',
       notes: JSON.stringify(categories)
     };
+
+    if (userId) {
+      payload.user_id = userId;
+    }
 
     let { error } = await supabase.from('transactions').upsert(payload);
     if (error && isDpAmountColumnError(error)) {
@@ -127,17 +133,66 @@ function formatNotesWithDp(notes: string, dpAmount?: number | null, paymentStatu
   return baseNotes;
 }
 
+export const DEMO_STORAGE_KEY = 'pembukuan_demo_transactions';
+
+export function getDemoTransactions(): Transaction[] {
+  const stored = localStorage.getItem(DEMO_STORAGE_KEY);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length >= 0) {
+        return parsed;
+      }
+    } catch (e) {}
+  }
+  localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(INITIAL_TRANSACTIONS));
+  return INITIAL_TRANSACTIONS;
+}
+
+function getUserStorageKey(userId: string): string {
+  return `pembukuan_user_transactions_${userId}`;
+}
+
+function getLocalUserTransactions(userId: string): Transaction[] {
+  if (!userId) return [];
+  const stored = localStorage.getItem(getUserStorageKey(userId));
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {}
+  }
+  return [];
+}
+
+function setLocalUserTransactions(userId: string, data: Transaction[]): void {
+  if (!userId) return;
+  localStorage.setItem(getUserStorageKey(userId), JSON.stringify(data));
+}
+
 // Core functions to fetch, add, update, delete
-export async function getTransactions(): Promise<{ data: Transaction[]; source: 'supabase' | 'local'; error?: string }> {
+export async function getTransactions(
+  isDemoMode: boolean = false,
+  userId?: string
+): Promise<{ data: Transaction[]; source: 'supabase' | 'local'; error?: string }> {
+  // 1. Mode Demo: strictly use local storage demo data, do NOT touch Supabase
+  if (isDemoMode) {
+    const demoData = getDemoTransactions();
+    return { data: demoData, source: 'local' };
+  }
+
+  // 2. Unauthenticated / No User
+  if (!userId) {
+    return { data: [], source: 'local' };
+  }
+
   const supabase = getSupabaseClient();
   
   if (!supabase) {
-    const localData = getLocalTransactions();
+    const localData = getLocalUserTransactions(userId);
     return { data: localData, source: 'local', error: 'Database Supabase tidak terhubung. Menggunakan data lokal.' };
   }
 
   try {
-    // Timeout promise (6 seconds max)
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('Koneksi Supabase memakan waktu terlalu lama (Timeout).')), 6000)
     );
@@ -156,32 +211,36 @@ export async function getTransactions(): Promise<{ data: Transaction[]; source: 
     if (data) {
       let remoteCategories: { income: string[]; expense: string[] } | null = null;
 
-      // Filter out system config rows and extract remote categories if present
-      const actualDbRows = data.filter(item => {
+      // Filter system config rows and enforce strict user data separation
+      const actualDbRows = data.filter((item: any) => {
         if (
           item.id === CONFIG_CATEGORY_ROW_ID ||
+          item.id?.startsWith(CONFIG_CATEGORY_ROW_ID) ||
           item.category === '__SYSTEM_CATEGORIES_CONFIG__' ||
           item.client_name === '__SYSTEM_CATEGORIES_CONFIG__'
         ) {
-          if (item.notes) {
+          if (item.notes && (item.user_id === userId || !item.user_id)) {
             try {
               const parsed = JSON.parse(item.notes);
               if (parsed && Array.isArray(parsed.income) && Array.isArray(parsed.expense)) {
                 remoteCategories = parsed;
               }
-            } catch (e) {
-              console.error("Gagal parse config row categories:", e);
-            }
+            } catch (e) {}
           }
           return false;
         }
+
+        // Strict User Separation: If item has user_id, it MUST belong to current user
+        if (item.user_id && item.user_id !== userId) {
+          return false;
+        }
+
         return true;
       });
 
       const localMap = new Map<string, number | null>();
 
-      // Map transaction items
-      const mappedData: Transaction[] = actualDbRows.map(item => {
+      const mappedData: Transaction[] = actualDbRows.map((item: any) => {
         const { dpAmount, cleanNotes } = parseDpAmountFromItem(item, localMap);
         return {
           id: item.id,
@@ -197,65 +256,13 @@ export async function getTransactions(): Promise<{ data: Transaction[]; source: 
         };
       });
 
-      // Sync and merge categories into local storage
-      if (remoteCategories) {
-        const incomeSet = new Set<string>(remoteCategories.income);
-        const expenseSet = new Set<string>(remoteCategories.expense);
-
-        mappedData.forEach(t => {
-          if (t.category && typeof t.category === 'string') {
-            const cat = t.category.trim();
-            if (cat) {
-              if (t.type === 'income') incomeSet.add(cat);
-              if (t.type === 'expense') expenseSet.add(cat);
-            }
-          }
-        });
-
-        const merged = {
-          income: Array.from(incomeSet),
-          expense: Array.from(expenseSet)
-        };
-        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(merged));
-      } else {
-        const stored = localStorage.getItem(CATEGORIES_STORAGE_KEY);
-        let currentIncome = ['Pembuatan Toko', 'Handle Toko', 'Shopee Affiliate', 'Lain-lain'];
-        let currentExpense = ['Operational', 'Ads Spend', 'Freelancer / Sub-kontraktor', 'Tool / Langganan Software', 'Lain-lain'];
-        if (stored) {
-          try {
-            const p = JSON.parse(stored);
-            if (Array.isArray(p.income) && p.income.length > 0) currentIncome = p.income;
-            if (Array.isArray(p.expense) && p.expense.length > 0) currentExpense = p.expense;
-          } catch (e) {}
-        }
-
-        const incomeSet = new Set<string>(currentIncome);
-        const expenseSet = new Set<string>(currentExpense);
-
-        mappedData.forEach(t => {
-          if (t.category && typeof t.category === 'string') {
-            const cat = t.category.trim();
-            if (cat) {
-              if (t.type === 'income') incomeSet.add(cat);
-              if (t.type === 'expense') expenseSet.add(cat);
-            }
-          }
-        });
-
-        const merged = {
-          income: Array.from(incomeSet),
-          expense: Array.from(expenseSet)
-        };
-        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(merged));
-      }
-      
-      // Save to local storage for backup
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(mappedData));
+      // Update user-specific local cache
+      setLocalUserTransactions(userId, mappedData);
       return { data: mappedData, source: 'supabase' };
     }
   } catch (err: any) {
-    console.error("Gagal menarik data langsung dari Supabase:", err);
-    const localData = getLocalTransactions();
+    console.error("Gagal menarik data dari Supabase:", err);
+    const localData = getLocalUserTransactions(userId);
     return { 
       data: localData, 
       source: 'local', 
@@ -263,24 +270,15 @@ export async function getTransactions(): Promise<{ data: Transaction[]; source: 
     };
   }
 
-  const localData = getLocalTransactions();
+  const localData = getLocalUserTransactions(userId);
   return { data: localData, source: 'local' };
 }
 
-function getLocalTransactions(): Transaction[] {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch (e) {
-      // corrupt
-    }
-  }
-  return [];
-}
-
-export async function addTransaction(transaction: Omit<Transaction, 'id' | 'created_at'>): Promise<{ success: boolean; data?: Transaction; error?: string }> {
-  const supabase = getSupabaseClient();
+export async function addTransaction(
+  transaction: Omit<Transaction, 'id' | 'created_at'>,
+  isDemoMode: boolean = false,
+  userId?: string
+): Promise<{ success: boolean; data?: Transaction; error?: string }> {
   const id = crypto.randomUUID();
   const created_at = new Date().toISOString();
   
@@ -290,6 +288,19 @@ export async function addTransaction(transaction: Omit<Transaction, 'id' | 'crea
     created_at
   };
 
+  // Demo mode
+  if (isDemoMode) {
+    const currentDemo = getDemoTransactions();
+    const updatedDemo = [newTransaction, ...currentDemo];
+    localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(updatedDemo));
+    return { success: true, data: newTransaction };
+  }
+
+  if (!userId) {
+    return { success: false, error: 'Silakan masuk ke akun Anda terlebih dahulu.' };
+  }
+
+  const supabase = getSupabaseClient();
   if (!supabase) {
     return { success: false, error: 'Database Supabase tidak terhubung.' };
   }
@@ -307,24 +318,14 @@ export async function addTransaction(transaction: Omit<Transaction, 'id' | 'crea
       amount: newTransaction.amount,
       dp_amount: newTransaction.dp_amount || null,
       payment_status: newTransaction.payment_status,
-      notes: notesForDb
+      notes: notesForDb,
+      user_id: userId
     };
-
-    // Attach active user_id if logged in
-    try {
-      const { data: authData } = await supabase.auth.getUser();
-      if (authData?.user?.id) {
-        payload.user_id = authData.user.id;
-      }
-    } catch (e) {
-      // Auth check ignored
-    }
 
     let { error } = await supabase
       .from('transactions')
       .insert([payload]);
 
-    // Retry if user_id or dp_amount column is missing in existing user DB
     if (error) {
       const errMsg = (error.message || '').toLowerCase();
       if (errMsg.includes('user_id') || errMsg.includes('dp_amount')) {
@@ -340,9 +341,9 @@ export async function addTransaction(transaction: Omit<Transaction, 'id' | 'crea
       return { success: false, error: `Gagal menyimpan ke database Supabase: ${error.message}` };
     }
 
-    // Update local cache
-    const localTransactions = getLocalTransactions();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([newTransaction, ...localTransactions]));
+    // Update local user cache
+    const localTx = getLocalUserTransactions(userId);
+    setLocalUserTransactions(userId, [newTransaction, ...localTx]);
 
     return { success: true, data: newTransaction };
   } catch (err: any) {
@@ -354,7 +355,22 @@ export async function addTransaction(transaction: Omit<Transaction, 'id' | 'crea
   }
 }
 
-export async function updateTransaction(transaction: Transaction): Promise<{ success: boolean; data?: Transaction; error?: string }> {
+export async function updateTransaction(
+  transaction: Transaction,
+  isDemoMode: boolean = false,
+  userId?: string
+): Promise<{ success: boolean; data?: Transaction; error?: string }> {
+  if (isDemoMode) {
+    const currentDemo = getDemoTransactions();
+    const updatedDemo = currentDemo.map(t => t.id === transaction.id ? transaction : t);
+    localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(updatedDemo));
+    return { success: true, data: transaction };
+  }
+
+  if (!userId) {
+    return { success: false, error: 'Silakan masuk ke akun Anda terlebih dahulu.' };
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) {
     return { success: false, error: 'Database Supabase tidak terhubung.' };
@@ -393,10 +409,10 @@ export async function updateTransaction(transaction: Transaction): Promise<{ suc
       return { success: false, error: `Gagal mengupdate database Supabase: ${error.message}` };
     }
 
-    // Update local cache
-    const localTransactions = getLocalTransactions();
-    const updatedLocal = localTransactions.map(item => item.id === transaction.id ? transaction : item);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLocal));
+    // Update local user cache
+    const localTx = getLocalUserTransactions(userId);
+    const updatedLocal = localTx.map(item => item.id === transaction.id ? transaction : item);
+    setLocalUserTransactions(userId, updatedLocal);
 
     return { success: true, data: transaction };
   } catch (err: any) {
@@ -408,7 +424,22 @@ export async function updateTransaction(transaction: Transaction): Promise<{ suc
   }
 }
 
-export async function deleteTransaction(id: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteTransaction(
+  id: string,
+  isDemoMode: boolean = false,
+  userId?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (isDemoMode) {
+    const currentDemo = getDemoTransactions();
+    const updatedDemo = currentDemo.filter(t => t.id !== id);
+    localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(updatedDemo));
+    return { success: true };
+  }
+
+  if (!userId) {
+    return { success: false, error: 'Silakan masuk ke akun Anda terlebih dahulu.' };
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) {
     return { success: false, error: 'Database Supabase tidak terhubung.' };
@@ -425,10 +456,10 @@ export async function deleteTransaction(id: string): Promise<{ success: boolean;
       return { success: false, error: `Gagal menghapus dari database Supabase: ${error.message}` };
     }
 
-    // Update local cache
-    const localTransactions = getLocalTransactions();
-    const updatedLocal = localTransactions.filter(item => item.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedLocal));
+    // Update local user cache
+    const localTx = getLocalUserTransactions(userId);
+    const updatedLocal = localTx.filter(item => item.id !== id);
+    setLocalUserTransactions(userId, updatedLocal);
 
     return { success: true };
   } catch (err: any) {
@@ -440,94 +471,28 @@ export async function deleteTransaction(id: string): Promise<{ success: boolean;
   }
 }
 
-// Function to sync local transactions to Supabase (Upload all missing)
-export async function syncLocalToSupabase(): Promise<{ success: boolean; count: number; error?: string }> {
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    return { success: false, count: 0, error: 'Supabase belum dikonfigurasi atau dinonaktifkan.' };
+export async function clearAllData(
+  isDemoMode: boolean = false,
+  userId?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (isDemoMode) {
+    localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(INITIAL_TRANSACTIONS));
+    return { success: true };
   }
 
-  try {
-    const local = getLocalTransactions();
-    
-    // First fetch existing IDs from Supabase to prevent duplicates
-    const { data: existing, error: fetchErr } = await supabase
-      .from('transactions')
-      .select('id');
-      
-    if (fetchErr) throw fetchErr;
-    
-    const existingIds = new Set((existing || []).map(item => item.id));
-    const toInsert = local.filter(item => !existingIds.has(item.id));
+  if (!userId) return { success: true };
 
-    if (toInsert.length === 0) {
-      return { success: true, count: 0 };
-    }
+  // Clear local user cache
+  setLocalUserTransactions(userId, []);
 
-    // Insert to Supabase
-    const dbPayload = toInsert.map(item => ({
-      id: item.id,
-      created_at: item.created_at,
-      date: item.date,
-      type: item.type,
-      category: item.category,
-      client_name: item.client_name,
-      amount: item.amount,
-      dp_amount: item.dp_amount || null,
-      payment_status: item.payment_status,
-      notes: formatNotesWithDp(item.notes, item.dp_amount, item.payment_status)
-    }));
-
-    let { error: insertErr } = await supabase
-      .from('transactions')
-      .insert(dbPayload);
-
-    if (insertErr && isDpAmountColumnError(insertErr)) {
-      const strippedPayload = dbPayload.map(({ dp_amount, ...rest }) => rest);
-      const retry = await supabase
-        .from('transactions')
-        .insert(strippedPayload);
-      insertErr = retry.error;
-    }
-
-    if (insertErr) throw insertErr;
-
-    return { success: true, count: toInsert.length };
-  } catch (err: any) {
-    console.error("Gagal melakukan sinkronisasi:", err);
-    return { success: false, count: 0, error: err.message || err };
-  }
-}
-
-export async function clearAllData(): Promise<{ success: boolean; error?: string }> {
-  // 1. Clear LocalStorage
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
-  } catch (e) {
-    console.error("Gagal membersihkan localStorage:", e);
-  }
-
-  // 2. Clear Supabase data if connected
   const supabase = getSupabaseClient();
   if (supabase) {
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const userId = authData?.user?.id;
-
-      if (userId) {
-        const { error } = await supabase
-          .from('transactions')
-          .delete()
-          .eq('user_id', userId);
-
-        if (error) {
-          // If user_id column is not in schema yet, delete all accessible records
-          await supabase.from('transactions').delete().neq('id', '____dummy_non_existent____');
-        }
-      } else {
-        await supabase.from('transactions').delete().neq('id', '____dummy_non_existent____');
-      }
+      // Only delete transactions belonging to this specific user
+      await supabase
+        .from('transactions')
+        .delete()
+        .eq('user_id', userId);
     } catch (err: any) {
       console.error("Gagal menghapus data di Supabase:", err);
     }

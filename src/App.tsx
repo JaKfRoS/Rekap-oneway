@@ -14,7 +14,6 @@ import {
   LogIn,
   LogOut,
   Database,
-  Code2,
   Sparkles
 } from 'lucide-react';
 import { Transaction } from './utils/dummyData';
@@ -63,15 +62,18 @@ export default function App() {
   const isFetchingRef = useRef<boolean>(false);
 
   // Fetch transactions on load and whenever config changes
-  const loadData = async () => {
+  const loadData = async (demoOverride?: boolean, userOverride?: any) => {
+    const activeDemo = demoOverride !== undefined ? demoOverride : isDemoMode;
+    const activeUser = userOverride !== undefined ? userOverride : currentUser;
+
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await getTransactions();
+      const res = await getTransactions(activeDemo, activeUser?.id);
       setTransactions(res.data);
-      setDataSource(res.source);
+      setDataSource(activeDemo ? 'local' : res.source);
       if (res.error) {
         setErrorMsg(res.error);
       }
@@ -90,35 +92,38 @@ export default function App() {
       setIsAuthChecking(false);
     }, 2500);
 
-    loadData();
-
     // Listen to Supabase Auth State
     const supabase = getSupabaseClient();
     let authListener: any = null;
 
     if (supabase) {
       supabase.auth.getSession().then(({ data: { session } }) => {
-        setCurrentUser(session?.user ?? null);
+        const user = session?.user ?? null;
+        setCurrentUser(user);
         setIsAuthChecking(false);
         clearTimeout(authFallbackTimeout);
+        loadData(false, user);
       }).catch(() => {
         setIsAuthChecking(false);
         clearTimeout(authFallbackTimeout);
+        loadData(isDemoMode, currentUser);
       });
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setCurrentUser(session?.user ?? null);
-        if (session?.user) {
+        const user = session?.user ?? null;
+        setCurrentUser(user);
+        if (user) {
           setIsDemoMode(false);
         }
         setIsAuthChecking(false);
         clearTimeout(authFallbackTimeout);
-        loadData();
+        loadData(user ? false : isDemoMode, user);
       });
       authListener = subscription;
     } else {
       setIsAuthChecking(false);
       clearTimeout(authFallbackTimeout);
+      loadData(isDemoMode, currentUser);
     }
 
     // Re-fetch data automatically when user switches back to this tab or comes online
@@ -177,18 +182,17 @@ export default function App() {
     const supabase = getSupabaseClient();
     if (supabase) {
       await supabase.auth.signOut();
-      setCurrentUser(null);
-      setIsDemoMode(false);
-      loadData();
     }
+    setCurrentUser(null);
+    setIsDemoMode(false);
+    setTransactions([]);
   };
 
   // CRUD Operations
   const handleAddTransaction = async (newTx: Omit<Transaction, 'id' | 'created_at'>) => {
     setLoading(true);
-    const res = await addTransaction(newTx);
+    const res = await addTransaction(newTx, isDemoMode, currentUser?.id);
     if (res.success && res.data) {
-      // Optimistic or simple full refresh
       await loadData();
       if (res.error) {
         alert(res.error);
@@ -201,7 +205,7 @@ export default function App() {
 
   const handleUpdateTransaction = async (updatedTx: Transaction) => {
     setLoading(true);
-    const res = await updateTransaction(updatedTx);
+    const res = await updateTransaction(updatedTx, isDemoMode, currentUser?.id);
     if (res.success && res.data) {
       await loadData();
       if (res.error) {
@@ -215,7 +219,7 @@ export default function App() {
 
   const handleDeleteTransaction = async (id: string) => {
     setLoading(true);
-    const res = await deleteTransaction(id);
+    const res = await deleteTransaction(id, isDemoMode, currentUser?.id);
     if (res.success) {
       await loadData();
       if (res.error) {
@@ -230,7 +234,7 @@ export default function App() {
   const handleResetAllData = async () => {
     if (window.confirm('Apakah Anda yakin ingin MENGHAPUS SEMUA DATA transaksi? Semua catatan pemasukan dan pengeluaran Anda akan dikosongkan secara permanen.')) {
       setLoading(true);
-      await clearAllData();
+      await clearAllData(isDemoMode, currentUser?.id);
       await loadData();
       alert('Semua data transaksi telah berhasil dihapus!');
     }
@@ -287,7 +291,7 @@ export default function App() {
           onOpenSqlModal={() => setIsSqlModalOpen(true)}
           onUseDemoMode={() => {
             setIsDemoMode(true);
-            loadData();
+            loadData(true, null);
           }}
         />
         <SqlModal 
@@ -383,16 +387,6 @@ export default function App() {
                   );
                 })}
               </nav>
-
-              {/* SQL Script Guide Button */}
-              <button
-                onClick={() => setIsSqlModalOpen(true)}
-                title="Buka Kode SQL Setup Supabase"
-                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all border border-indigo-200/60 cursor-pointer"
-              >
-                <Code2 className="w-4 h-4" />
-                <span className="hidden xl:inline">Script SQL</span>
-              </button>
 
               {/* Reset Data Button */}
               <button
@@ -504,13 +498,6 @@ export default function App() {
           </div>
 
           <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
-            <button
-              onClick={() => { setIsSqlModalOpen(true); setMobileMenuOpen(false); }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl font-bold text-xs"
-            >
-              <Code2 className="w-4 h-4" />
-              <span>Kode Script SQL Supabase</span>
-            </button>
 
             <button
               onClick={() => { handleResetAllData(); setMobileMenuOpen(false); }}
