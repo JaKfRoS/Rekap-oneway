@@ -3,7 +3,6 @@ import {
   LayoutDashboard, 
   Receipt, 
   FilePieChart, 
-  CloudLightning,
   TrendingUp,
   TrendingDown,
   Scale,
@@ -157,20 +156,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 antialiased">
       
-      {/* Dynamic Top Banner for Cloud/Local status */}
-      <div className={`py-1.5 px-4 text-center text-xs font-bold transition-all no-print flex items-center justify-center gap-2 ${
-        dataSource === 'supabase' 
-          ? 'bg-indigo-600 text-white' 
-          : 'bg-amber-500 text-white'
-      }`}>
-        <CloudLightning className="w-3.5 h-3.5" />
-        <span>
-          {dataSource === 'supabase' 
-            ? 'TERKONEKSI KE SUPABASE CLOUD' 
-            : 'MODE OFFLINE-LOCAL (Gagal tersambung ke Supabase Cloud)'}
-        </span>
-      </div>
-
       {/* Main Header */}
       <header className="bg-white border-b border-slate-100 shadow-xs sticky top-0 z-40 no-print">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
