@@ -9,7 +9,12 @@ import {
   RefreshCw,
   Wallet,
   Menu,
-  X
+  X,
+  UserCheck,
+  LogIn,
+  LogOut,
+  Database,
+  Code2
 } from 'lucide-react';
 import { Transaction } from './utils/dummyData';
 import { 
@@ -25,6 +30,8 @@ import { formatIDR, getActualIncomeAmount } from './utils/formatters';
 import Dashboard from './components/Dashboard';
 import Transactions from './components/Transactions';
 import Reports from './components/Reports';
+import { AuthModal } from './components/AuthModal';
+import { SqlModal } from './components/SqlModal';
 
 type TabId = 'dashboard' | 'transactions' | 'reports';
 
@@ -35,6 +42,11 @@ export default function App() {
   const [dataSource, setDataSource] = useState<'supabase' | 'local'>('local');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
+  // Auth and Modals State
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
+
   // Mobile menu open state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -63,13 +75,28 @@ export default function App() {
   useEffect(() => {
     loadData();
 
+    // Listen to Supabase Auth State
+    const supabase = getSupabaseClient();
+    let authListener: any = null;
+
+    if (supabase) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        setCurrentUser(session?.user ?? null);
+      });
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        setCurrentUser(session?.user ?? null);
+        loadData();
+      });
+      authListener = subscription;
+    }
+
     // Re-fetch data automatically when user switches back to this tab or comes online
     const handleFocus = () => loadData();
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', handleFocus);
 
     // Attach Realtime Supabase Subscription if connected
-    const supabase = getSupabaseClient();
     let channel: any = null;
     if (supabase) {
       try {
@@ -109,11 +136,21 @@ export default function App() {
     return () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleFocus);
+      if (authListener) authListener.unsubscribe();
       if (channel && supabase) {
         supabase.removeChannel(channel);
       }
     };
   }, []);
+
+  const handleLogout = async () => {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      await supabase.auth.signOut();
+      setCurrentUser(null);
+      loadData();
+    }
+  };
 
   // CRUD Operations
   const handleAddTransaction = async (newTx: Omit<Transaction, 'id' | 'created_at'>) => {
@@ -242,33 +279,68 @@ export default function App() {
 
             </div>
 
-            {/* Navigation Tabs (Desktop Only) */}
-            <nav className="hidden md:flex space-x-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/50">
-              {[
-                { id: 'dashboard', label: 'Dasbor', icon: LayoutDashboard },
-                { id: 'transactions', label: 'Transaksi', icon: Receipt },
-                { id: 'reports', label: 'Laporan', icon: FilePieChart }
-              ].map(tab => {
-                const IconComp = tab.icon;
-                return (
+            {/* Navigation Tabs & Auth Actions (Desktop Only) */}
+            <div className="hidden md:flex items-center gap-3">
+              <nav className="flex space-x-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/50">
+                {[
+                  { id: 'dashboard', label: 'Dasbor', icon: LayoutDashboard },
+                  { id: 'transactions', label: 'Transaksi', icon: Receipt },
+                  { id: 'reports', label: 'Laporan', icon: FilePieChart }
+                ].map(tab => {
+                  const IconComp = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id as TabId);
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        activeTab === tab.id 
+                          ? 'bg-white text-indigo-600 shadow-xs' 
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <IconComp className="w-4 h-4" />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </nav>
+
+              {/* SQL Script Guide Button */}
+              <button
+                onClick={() => setIsSqlModalOpen(true)}
+                title="Buka Kode SQL Setup Supabase"
+                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all border border-indigo-200/60 cursor-pointer"
+              >
+                <Code2 className="w-4 h-4" />
+                <span className="hidden xl:inline">Script SQL</span>
+              </button>
+
+              {/* User Auth Status Button */}
+              {currentUser ? (
+                <div className="flex items-center gap-2 bg-slate-100 border border-slate-200/80 pl-3 pr-1 py-1 rounded-xl text-xs">
+                  <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-bold text-slate-700 truncate max-w-[120px] xl:max-w-[180px]">{currentUser.email}</span>
                   <button
-                    key={tab.id}
-                    onClick={() => {
-                      setActiveTab(tab.id as TabId);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      activeTab === tab.id 
-                        ? 'bg-white text-indigo-600 shadow-xs' 
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                    onClick={handleLogout}
+                    title="Keluar dari Akun"
+                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                   >
-                    <IconComp className="w-4 h-4" />
-                    {tab.label}
+                    <LogOut className="w-3.5 h-3.5" />
                   </button>
-                );
-              })}
-            </nav>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow cursor-pointer"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Masuk / Daftar</span>
+                </button>
+              )}
+            </div>
 
             {/* Mobile Hamburger menu toggle */}
             <div className="md:hidden flex items-center">
@@ -331,6 +403,40 @@ export default function App() {
               );
             })}
           </div>
+
+          <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
+            <button
+              onClick={() => { setIsSqlModalOpen(true); setMobileMenuOpen(false); }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl font-bold text-xs"
+            >
+              <Code2 className="w-4 h-4" />
+              <span>Kode Script SQL Supabase</span>
+            </button>
+
+            {currentUser ? (
+              <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="flex items-center gap-2 min-w-0">
+                  <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="text-xs font-bold text-slate-700 truncate">{currentUser.email}</span>
+                </div>
+                <button
+                  onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                  className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-xs font-bold flex items-center gap-1"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Keluar</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setIsAuthModalOpen(true); setMobileMenuOpen(false); }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-xs"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Masuk / Daftar Akun</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -387,6 +493,18 @@ export default function App() {
         </div>
 
       </main>
+
+      {/* Auth Modal & SQL Guide Modal */}
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)} 
+        onSuccess={() => loadData()} 
+      />
+
+      <SqlModal 
+        isOpen={isSqlModalOpen} 
+        onClose={() => setIsSqlModalOpen(false)} 
+      />
 
       {/* Standard Footer */}
       <footer className="bg-white border-t border-slate-100 py-6 mt-12 text-center text-xs text-slate-400 no-print">
