@@ -324,7 +324,7 @@ export default function App() {
           <div className="fixed inset-0 bg-slate-900/10 backdrop-blur-xs flex items-center justify-center z-50 no-print">
             <div className="bg-white p-5 rounded-2xl shadow-xl flex items-center gap-3 border border-slate-200">
               <RefreshCw className="w-5 h-5 text-indigo-600 animate-spin" />
-              <span className="text-sm font-bold text-slate-800">Sinkronisasi Basis Data...</span>
+              <span className="text-sm font-bold text-slate-800">Loading ...</span>
             </div>
           </div>
         )}
