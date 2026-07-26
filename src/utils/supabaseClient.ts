@@ -21,13 +21,24 @@ export function saveSupabaseConfig(config: SupabaseConfig) {
   // No-op because it is hardcoded as requested
 }
 
+let supabaseInstance: any = null;
+
 export function getSupabaseClient() {
-  try {
-    return createClient(HARDCODED_URL, HARDCODED_KEY);
-  } catch (err) {
-    console.error("Gagal menginisialisasi client Supabase:", err);
-    return null;
+  if (!supabaseInstance) {
+    try {
+      supabaseInstance = createClient<any>(HARDCODED_URL, HARDCODED_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        }
+      });
+    } catch (err) {
+      console.error("Gagal menginisialisasi client Supabase:", err);
+      return null;
+    }
   }
+  return supabaseInstance;
 }
 
 function getPastOrCurrentConfig(): SupabaseConfig | null {
@@ -126,10 +137,17 @@ export async function getTransactions(): Promise<{ data: Transaction[]; source: 
   }
 
   try {
-    const { data, error } = await supabase
+    // Timeout promise (6 seconds max)
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Koneksi Supabase memakan waktu terlalu lama (Timeout).')), 6000)
+    );
+
+    const fetchPromise = supabase
       .from('transactions')
       .select('*')
       .order('date', { ascending: false });
+
+    const { data, error }: any = await Promise.race([fetchPromise, timeoutPromise]);
 
     if (error) {
       throw error;
@@ -292,14 +310,29 @@ export async function addTransaction(transaction: Omit<Transaction, 'id' | 'crea
       notes: notesForDb
     };
 
+    // Attach active user_id if logged in
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id) {
+        payload.user_id = authData.user.id;
+      }
+    } catch (e) {
+      // Auth check ignored
+    }
+
     let { error } = await supabase
       .from('transactions')
       .insert([payload]);
 
-    if (error && isDpAmountColumnError(error)) {
-      delete payload.dp_amount;
-      const retry = await supabase.from('transactions').insert([payload]);
-      error = retry.error;
+    // Retry if user_id or dp_amount column is missing in existing user DB
+    if (error) {
+      const errMsg = (error.message || '').toLowerCase();
+      if (errMsg.includes('user_id') || errMsg.includes('dp_amount')) {
+        if (errMsg.includes('user_id')) delete payload.user_id;
+        if (errMsg.includes('dp_amount')) delete payload.dp_amount;
+        const retry = await supabase.from('transactions').insert([payload]);
+        error = retry.error;
+      }
     }
 
     if (error) {
@@ -465,3 +498,41 @@ export async function syncLocalToSupabase(): Promise<{ success: boolean; count: 
     return { success: false, count: 0, error: err.message || err };
   }
 }
+
+export async function clearAllData(): Promise<{ success: boolean; error?: string }> {
+  // 1. Clear LocalStorage
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+  } catch (e) {
+    console.error("Gagal membersihkan localStorage:", e);
+  }
+
+  // 2. Clear Supabase data if connected
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id;
+
+      if (userId) {
+        const { error } = await supabase
+          .from('transactions')
+          .delete()
+          .eq('user_id', userId);
+
+        if (error) {
+          // If user_id column is not in schema yet, delete all accessible records
+          await supabase.from('transactions').delete().neq('id', '____dummy_non_existent____');
+        }
+      } else {
+        await supabase.from('transactions').delete().neq('id', '____dummy_non_existent____');
+      }
+    } catch (err: any) {
+      console.error("Gagal menghapus data di Supabase:", err);
+    }
+  }
+
+  return { success: true };
+}
+

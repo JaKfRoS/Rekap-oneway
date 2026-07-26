@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, 
   Receipt, 
@@ -14,7 +14,8 @@ import {
   LogIn,
   LogOut,
   Database,
-  Code2
+  Code2,
+  Sparkles
 } from 'lucide-react';
 import { Transaction } from './utils/dummyData';
 import { 
@@ -22,8 +23,10 @@ import {
   addTransaction, 
   updateTransaction, 
   deleteTransaction,
+  clearAllData,
   getSupabaseClient
 } from './utils/supabaseClient';
+import { Trash2 } from 'lucide-react';
 import { formatIDR, getActualIncomeAmount } from './utils/formatters';
 
 // Component imports
@@ -32,6 +35,7 @@ import Transactions from './components/Transactions';
 import Reports from './components/Reports';
 import { AuthModal } from './components/AuthModal';
 import { SqlModal } from './components/SqlModal';
+import { LoginPage } from './components/LoginPage';
 
 type TabId = 'dashboard' | 'transactions' | 'reports';
 
@@ -44,6 +48,8 @@ export default function App() {
   
   // Auth and Modals State
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
 
@@ -53,8 +59,13 @@ export default function App() {
   // Edit Transaction state mapping across sections
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
+  // Ref guard to prevent overlapping loadData calls
+  const isFetchingRef = useRef<boolean>(false);
+
   // Fetch transactions on load and whenever config changes
   const loadData = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setLoading(true);
     setErrorMsg(null);
     try {
@@ -69,10 +80,16 @@ export default function App() {
       setErrorMsg('Gagal memuat transaksi.');
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
   };
 
   useEffect(() => {
+    // Safety fallback timeout to ensure auth check never blocks forever
+    const authFallbackTimeout = setTimeout(() => {
+      setIsAuthChecking(false);
+    }, 2500);
+
     loadData();
 
     // Listen to Supabase Auth State
@@ -82,13 +99,26 @@ export default function App() {
     if (supabase) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         setCurrentUser(session?.user ?? null);
+        setIsAuthChecking(false);
+        clearTimeout(authFallbackTimeout);
+      }).catch(() => {
+        setIsAuthChecking(false);
+        clearTimeout(authFallbackTimeout);
       });
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         setCurrentUser(session?.user ?? null);
+        if (session?.user) {
+          setIsDemoMode(false);
+        }
+        setIsAuthChecking(false);
+        clearTimeout(authFallbackTimeout);
         loadData();
       });
       authListener = subscription;
+    } else {
+      setIsAuthChecking(false);
+      clearTimeout(authFallbackTimeout);
     }
 
     // Re-fetch data automatically when user switches back to this tab or comes online
@@ -148,6 +178,7 @@ export default function App() {
     if (supabase) {
       await supabase.auth.signOut();
       setCurrentUser(null);
+      setIsDemoMode(false);
       loadData();
     }
   };
@@ -196,6 +227,15 @@ export default function App() {
     }
   };
 
+  const handleResetAllData = async () => {
+    if (window.confirm('Apakah Anda yakin ingin MENGHAPUS SEMUA DATA transaksi? Semua catatan pemasukan dan pengeluaran Anda akan dikosongkan secara permanen.')) {
+      setLoading(true);
+      await clearAllData();
+      await loadData();
+      alert('Semua data transaksi telah berhasil dihapus!');
+    }
+  };
+
 
 
   // Quick Global Balances Header Card
@@ -221,6 +261,42 @@ export default function App() {
     setEditingTransaction(tx);
     setActiveTab('transactions');
   };
+
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center p-1.5 shadow-xl mb-4 animate-bounce">
+          <img src="/favicon.svg" alt="KasUsaha" className="w-full h-full object-contain" />
+        </div>
+        <p className="text-sm font-bold text-slate-200 flex items-center gap-2">
+          <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
+          Memeriksa Sesi Akun...
+        </p>
+      </div>
+    );
+  }
+
+  if (!currentUser && !isDemoMode) {
+    return (
+      <>
+        <LoginPage 
+          onLoginSuccess={() => {
+            setIsDemoMode(false);
+            loadData();
+          }}
+          onOpenSqlModal={() => setIsSqlModalOpen(true)}
+          onUseDemoMode={() => {
+            setIsDemoMode(true);
+            loadData();
+          }}
+        />
+        <SqlModal 
+          isOpen={isSqlModalOpen} 
+          onClose={() => setIsSqlModalOpen(false)} 
+        />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 antialiased">
@@ -318,6 +394,16 @@ export default function App() {
                 <span className="hidden xl:inline">Script SQL</span>
               </button>
 
+              {/* Reset Data Button */}
+              <button
+                onClick={handleResetAllData}
+                title="Hapus / Reset Seluruh Data Transaksi"
+                className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-all border border-rose-200/60 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4 text-rose-600" />
+                <span className="hidden xl:inline">Hapus Semua Data</span>
+              </button>
+
               {/* User Auth Status Button */}
               {currentUser ? (
                 <div className="flex items-center gap-2 bg-slate-100 border border-slate-200/80 pl-3 pr-1 py-1 rounded-xl text-xs">
@@ -326,9 +412,22 @@ export default function App() {
                   <button
                     onClick={handleLogout}
                     title="Keluar dari Akun"
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
                   >
                     <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : isDemoMode ? (
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1.5 bg-amber-50 border border-amber-200/80 text-amber-800 rounded-xl text-[11px] font-bold">
+                    Mode Demo (Lokal)
+                  </span>
+                  <button
+                    onClick={() => setIsDemoMode(false)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Masuk</span>
                   </button>
                 </div>
               ) : (
@@ -413,6 +512,14 @@ export default function App() {
               <span>Kode Script SQL Supabase</span>
             </button>
 
+            <button
+              onClick={() => { handleResetAllData(); setMobileMenuOpen(false); }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-50 text-rose-700 rounded-xl font-bold text-xs"
+            >
+              <Trash2 className="w-4 h-4 text-rose-600" />
+              <span>Hapus / Bersihkan Semua Data</span>
+            </button>
+
             {currentUser ? (
               <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
                 <div className="flex items-center gap-2 min-w-0">
@@ -421,16 +528,30 @@ export default function App() {
                 </div>
                 <button
                   onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
-                  className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-xs font-bold flex items-center gap-1"
+                  className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Keluar</span>
                 </button>
               </div>
+            ) : isDemoMode ? (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-amber-900">Mode Demo (Lokal)</span>
+                  <span className="text-[10px] text-amber-700">Penyimpanan Browser</span>
+                </div>
+                <button
+                  onClick={() => { setIsDemoMode(false); setMobileMenuOpen(false); }}
+                  className="w-full py-2 bg-emerald-600 text-white rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Masuk ke Akun Cloud</span>
+                </button>
+              </div>
             ) : (
               <button
                 onClick={() => { setIsAuthModalOpen(true); setMobileMenuOpen(false); }}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-xs"
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer"
               >
                 <LogIn className="w-4 h-4" />
                 <span>Masuk / Daftar Akun</span>
