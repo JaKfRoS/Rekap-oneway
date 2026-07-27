@@ -70,13 +70,18 @@ export default function App() {
     isFetchingRef.current = true;
     if (!silent) {
       setLoading(true);
+      setErrorMsg(null);
     }
-    setErrorMsg(null);
     try {
       const res = await getTransactions(activeDemo, activeUser?.id);
-      setTransactions(res.data);
+      setTransactions(prev => {
+        if ((!res.data || res.data.length === 0) && prev.length > 0) {
+          return prev;
+        }
+        return res.data;
+      });
       setDataSource(activeDemo ? 'local' : res.source);
-      if (res.error) {
+      if (res.error && !silent) {
         setErrorMsg(res.error);
       }
     } catch (err: any) {
@@ -202,9 +207,6 @@ export default function App() {
         const created = res.data;
         // Optimistically update React state immediately
         setTransactions(prev => [created, ...prev.filter(t => t.id !== created.id)]);
-        if (res.error) {
-          setErrorMsg(res.error);
-        }
         // Non-blocking silent background sync
         loadData(isDemoMode, currentUser, true, true);
       } else {
@@ -222,9 +224,6 @@ export default function App() {
         const updated = res.data;
         // Optimistically update React state immediately
         setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t));
-        if (res.error) {
-          setErrorMsg(res.error);
-        }
         // Non-blocking silent background sync
         loadData(isDemoMode, currentUser, true, true);
       } else {
@@ -241,9 +240,6 @@ export default function App() {
       if (res.success) {
         // Optimistically update React state immediately
         setTransactions(prev => prev.filter(t => t.id !== id));
-        if (res.error) {
-          setErrorMsg(res.error);
-        }
         // Non-blocking silent background sync
         loadData(isDemoMode, currentUser, true, true);
       } else {

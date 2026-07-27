@@ -40,7 +40,7 @@ export default function Reports({ transactions }: ReportsProps) {
 
   // Apply range based on preset or custom input
   const dateRange = useMemo(() => {
-    const today = new Date('2026-07-21'); // Anchored to 2026-07-21 based on metadata
+    const today = new Date();
     let start = '';
     let end = '';
 

@@ -204,7 +204,7 @@ export default function Transactions({
       const matchesSearch = 
         (t.client_name && t.client_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (t.notes && t.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        t.category.toLowerCase().includes(searchTerm.toLowerCase());
+        (t.category && t.category.toLowerCase().includes(searchTerm.toLowerCase()));
 
       // 2. Type / Piutang filter
       let matchesType = true;
@@ -219,10 +219,10 @@ export default function Transactions({
       // 3. Category filter
       const matchesCategory = filterCategory === 'all' ? true : t.category === filterCategory;
 
-      // 4. Date ranges
-      const transactionDate = new Date(t.date).getTime();
-      const matchesStartDate = startDate ? transactionDate >= new Date(startDate).getTime() : true;
-      const matchesEndDate = endDate ? transactionDate <= new Date(endDate).getTime() : true;
+      // 4. Date ranges (using strict YYYY-MM-DD string comparison to prevent timezone & timestamp offset bugs)
+      const tDateStr = t.date ? t.date.slice(0, 10) : '';
+      const matchesStartDate = startDate ? (tDateStr >= startDate) : true;
+      const matchesEndDate = endDate ? (tDateStr <= endDate) : true;
 
       return matchesSearch && matchesType && matchesCategory && matchesStartDate && matchesEndDate;
     });
