@@ -374,19 +374,28 @@ export async function addTransaction(
       user_id: userId
     };
 
-    let { error } = await supabase
-      .from('transactions')
-      .insert([payload]);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Koneksi Cloud memakan waktu terlalu lama (Timeout).')), 3500)
+    );
 
-    if (error) {
-      const errMsg = (error.message || '').toLowerCase();
-      if (errMsg.includes('user_id') || errMsg.includes('dp_amount')) {
-        if (errMsg.includes('user_id')) delete payload.user_id;
-        if (errMsg.includes('dp_amount')) delete payload.dp_amount;
-        const retry = await supabase.from('transactions').insert([payload]);
-        error = retry.error;
+    const insertWork = (async () => {
+      let { error } = await supabase
+        .from('transactions')
+        .insert([payload]);
+
+      if (error) {
+        const errMsg = (error.message || '').toLowerCase();
+        if (errMsg.includes('user_id') || errMsg.includes('dp_amount')) {
+          if (errMsg.includes('user_id')) delete payload.user_id;
+          if (errMsg.includes('dp_amount')) delete payload.dp_amount;
+          const retry = await supabase.from('transactions').insert([payload]);
+          error = retry.error;
+        }
       }
-    }
+      return error;
+    })();
+
+    const error: any = await Promise.race([insertWork, timeoutPromise]);
 
     if (error) {
       console.warn("Gagal menyimpan ke Supabase cloud, transaksi disimpan secara lokal:", error);
@@ -447,19 +456,28 @@ export async function updateTransaction(
       notes: notesForDb
     };
 
-    let { error } = await supabase
-      .from('transactions')
-      .update(payload)
-      .eq('id', transaction.id);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Koneksi Cloud memakan waktu terlalu lama (Timeout).')), 3500)
+    );
 
-    if (error && isDpAmountColumnError(error)) {
-      delete payload.dp_amount;
-      const retry = await supabase
+    const updateWork = (async () => {
+      let { error } = await supabase
         .from('transactions')
         .update(payload)
         .eq('id', transaction.id);
-      error = retry.error;
-    }
+
+      if (error && isDpAmountColumnError(error)) {
+        delete payload.dp_amount;
+        const retry = await supabase
+          .from('transactions')
+          .update(payload)
+          .eq('id', transaction.id);
+        error = retry.error;
+      }
+      return error;
+    })();
+
+    const error: any = await Promise.race([updateWork, timeoutPromise]);
 
     if (error) {
       console.warn("Gagal mengupdate di Supabase cloud, perubahan disimpan secara lokal:", error);
@@ -507,10 +525,19 @@ export async function deleteTransaction(
   }
 
   try {
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('id', id);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Koneksi Cloud memakan waktu terlalu lama (Timeout).')), 3500)
+    );
+
+    const deleteWork = (async () => {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id);
+      return error;
+    })();
+
+    const error: any = await Promise.race([deleteWork, timeoutPromise]);
 
     if (error) {
       console.warn("Gagal menghapus dari Supabase cloud, item tetap dihapus dari tampilan lokal:", error);

@@ -62,13 +62,15 @@ export default function App() {
   const isFetchingRef = useRef<boolean>(false);
 
   // Fetch transactions on load and whenever config changes
-  const loadData = async (demoOverride?: boolean, userOverride?: any, force: boolean = false) => {
+  const loadData = async (demoOverride?: boolean, userOverride?: any, force: boolean = false, silent: boolean = false) => {
     const activeDemo = demoOverride !== undefined ? demoOverride : isDemoMode;
     const activeUser = userOverride !== undefined ? userOverride : currentUser;
 
     if (isFetchingRef.current && !force) return;
     isFetchingRef.current = true;
-    setLoading(true);
+    if (!silent) {
+      setLoading(true);
+    }
     setErrorMsg(null);
     try {
       const res = await getTransactions(activeDemo, activeUser?.id);
@@ -79,9 +81,13 @@ export default function App() {
       }
     } catch (err: any) {
       console.error(err);
-      setErrorMsg('Gagal memuat transaksi.');
+      if (!silent) {
+        setErrorMsg('Gagal memuat transaksi.');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
       isFetchingRef.current = false;
     }
   };
@@ -127,7 +133,7 @@ export default function App() {
     }
 
     // Re-fetch data automatically when user switches back to this tab or comes online
-    const handleFocus = () => loadData();
+    const handleFocus = () => loadData(undefined, undefined, false, true);
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', handleFocus);
 
@@ -138,7 +144,7 @@ export default function App() {
         channel = supabase
           .channel('db-realtime-sync')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
-            loadData();
+            loadData(undefined, undefined, true, true);
           })
           .subscribe();
       } catch (e) {
@@ -190,7 +196,6 @@ export default function App() {
 
   // CRUD Operations
   const handleAddTransaction = async (newTx: Omit<Transaction, 'id' | 'created_at'>) => {
-    setLoading(true);
     try {
       const res = await addTransaction(newTx, isDemoMode, currentUser?.id);
       if (res.success && res.data) {
@@ -200,20 +205,17 @@ export default function App() {
         if (res.error) {
           setErrorMsg(res.error);
         }
-        // Non-blocking sync to keep DB in step without flickering UI
-        loadData(isDemoMode, currentUser, true);
+        // Non-blocking silent background sync
+        loadData(isDemoMode, currentUser, true, true);
       } else {
         alert(`Gagal menambah transaksi: ${res.error}`);
       }
     } catch (e: any) {
       alert(`Terjadi kesalahan: ${e.message || e}`);
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleUpdateTransaction = async (updatedTx: Transaction) => {
-    setLoading(true);
     try {
       const res = await updateTransaction(updatedTx, isDemoMode, currentUser?.id);
       if (res.success && res.data) {
@@ -223,20 +225,17 @@ export default function App() {
         if (res.error) {
           setErrorMsg(res.error);
         }
-        // Non-blocking sync
-        loadData(isDemoMode, currentUser, true);
+        // Non-blocking silent background sync
+        loadData(isDemoMode, currentUser, true, true);
       } else {
         alert(`Gagal memperbarui transaksi: ${res.error}`);
       }
     } catch (e: any) {
       alert(`Terjadi kesalahan: ${e.message || e}`);
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleDeleteTransaction = async (id: string) => {
-    setLoading(true);
     try {
       const res = await deleteTransaction(id, isDemoMode, currentUser?.id);
       if (res.success) {
@@ -245,15 +244,13 @@ export default function App() {
         if (res.error) {
           setErrorMsg(res.error);
         }
-        // Non-blocking sync
-        loadData(isDemoMode, currentUser, true);
+        // Non-blocking silent background sync
+        loadData(isDemoMode, currentUser, true, true);
       } else {
         alert(`Gagal menghapus transaksi: ${res.error}`);
       }
     } catch (e: any) {
       alert(`Terjadi kesalahan: ${e.message || e}`);
-    } finally {
-      setLoading(false);
     }
   };
 
