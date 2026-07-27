@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -10,7 +10,10 @@ import {
   Clock, 
   ArrowUpRight, 
   ArrowDownRight,
-  AlertCircle
+  AlertCircle,
+  Calendar,
+  RotateCcw,
+  Filter
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -34,77 +37,135 @@ interface DashboardProps {
   onEditTransaction: (tx: Transaction) => void;
 }
 
-export default function Dashboard({ transactions, onNavigateToTransactions, onEditTransaction }: DashboardProps) {
-  // Determine "current month" based on the latest transaction date (to adapt to dummy/live data)
-  const currentPeriod = useMemo(() => {
-    if (transactions.length === 0) {
-      const now = new Date();
-      return { month: now.getMonth(), year: now.getFullYear(), label: 'Bulan Ini' };
-    }
-    
-    // Sort transactions by date descending to find the latest
-    const sorted = [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const latestDate = new Date(sorted[0].date);
-    
-    const monthNames = [
-      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-    ];
-    
-    return {
-      month: latestDate.getMonth(),
-      year: latestDate.getFullYear(),
-      label: `${monthNames[latestDate.getMonth()]} ${latestDate.getFullYear()}`
-    };
-  }, [transactions]);
+const INDONESIAN_MONTHS = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
 
-  // Calculations
+export default function Dashboard({ transactions, onNavigateToTransactions, onEditTransaction }: DashboardProps) {
+  // Real-time date reference
+  const now = useMemo(() => new Date(), []);
+  
+  // Period filter states (Default: real-time current month & year)
+  const [filterMode, setFilterMode] = useState<'monthly' | 'yearly' | 'all'>('monthly');
+  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
+
+  // Derive unique years from transactions + current year
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    years.add(now.getFullYear());
+    transactions.forEach(t => {
+      if (t.date) {
+        const yr = new Date(t.date).getFullYear();
+        if (!isNaN(yr)) years.add(yr);
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [transactions, now]);
+
+  // Reset to real-time month
+  const handleResetRealtime = () => {
+    setFilterMode('monthly');
+    setSelectedMonth(now.getMonth());
+    setSelectedYear(now.getFullYear());
+  };
+
+  // Label for active period
+  const activePeriodLabel = useMemo(() => {
+    if (filterMode === 'monthly') {
+      return `${INDONESIAN_MONTHS[selectedMonth]} ${selectedYear}`;
+    } else if (filterMode === 'yearly') {
+      return `Tahun ${selectedYear}`;
+    }
+    return 'Semua Waktu';
+  }, [filterMode, selectedMonth, selectedYear]);
+
+  // Filter transactions according to selected period
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      if (!t.date) return false;
+      const tDate = new Date(t.date);
+      if (isNaN(tDate.getTime())) return false;
+
+      if (filterMode === 'monthly') {
+        return tDate.getMonth() === selectedMonth && tDate.getFullYear() === selectedYear;
+      }
+      if (filterMode === 'yearly') {
+        return tDate.getFullYear() === selectedYear;
+      }
+      return true; // 'all'
+    });
+  }, [transactions, filterMode, selectedMonth, selectedYear]);
+
+  // Calculations for filtered period AND overall
   const stats = useMemo(() => {
-    let totalIncome = 0;
-    let totalExpense = 0;
-    let monthIncome = 0;
-    let monthExpense = 0;
-    let pendingInvoicesVal = 0;
+    let periodIncome = 0;
+    let periodExpense = 0;
+    let periodPiutang = 0;
+
+    let overallIncome = 0;
+    let overallExpense = 0;
+    let overallPiutang = 0;
 
     transactions.forEach(t => {
       const tDate = new Date(t.date);
-      const isCurrentMonth = tDate.getMonth() === currentPeriod.month && tDate.getFullYear() === currentPeriod.year;
-      
+      const isFiltered = (
+        filterMode === 'all' ||
+        (filterMode === 'monthly' && tDate.getMonth() === selectedMonth && tDate.getFullYear() === selectedYear) ||
+        (filterMode === 'yearly' && tDate.getFullYear() === selectedYear)
+      );
+
       if (t.type === 'income') {
         const actualCash = getActualIncomeAmount(t);
         const piutang = getPiutangAmount(t);
 
-        totalIncome += actualCash;
-        if (isCurrentMonth) monthIncome += actualCash;
-        pendingInvoicesVal += piutang;
+        overallIncome += actualCash;
+        overallPiutang += piutang;
+
+        if (isFiltered) {
+          periodIncome += actualCash;
+          periodPiutang += piutang;
+        }
       } else {
-        totalExpense += t.amount;
-        if (isCurrentMonth) monthExpense += t.amount;
+        overallExpense += t.amount;
+
+        if (isFiltered) {
+          periodExpense += t.amount;
+        }
       }
     });
 
     return {
-      totalIncome,
-      totalExpense,
-      netProfit: totalIncome - totalExpense,
-      monthIncome,
-      monthExpense,
-      monthNetProfit: monthIncome - monthExpense,
-      pendingInvoicesVal
+      periodIncome,
+      periodExpense,
+      periodNetProfit: periodIncome - periodExpense,
+      periodPiutang,
+      overallIncome,
+      overallExpense,
+      overallNetProfit: overallIncome - overallExpense,
+      overallPiutang
     };
-  }, [transactions, currentPeriod]);
+  }, [transactions, filterMode, selectedMonth, selectedYear]);
 
-  // Chart 1: Monthly Income vs Expense Trend
+  // Chart 1: Monthly Income vs Expense Trend (Context-aware for year or overall)
   const monthlyChartData = useMemo(() => {
     const monthlyMap: Record<string, { label: string; key: string; income: number; expense: number }> = {};
     
-    transactions.forEach(t => {
+    // Determine target transactions for chart
+    const chartSourceTx = filterMode === 'yearly' 
+      ? transactions.filter(t => new Date(t.date).getFullYear() === selectedYear)
+      : transactions;
+
+    chartSourceTx.forEach(t => {
       const date = new Date(t.date);
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
       const yearKey = date.getFullYear();
       const monthKey = String(date.getMonth()).padStart(2, '0');
       const key = `${yearKey}-${monthKey}`;
-      const label = `${monthNames[date.getMonth()]} ${String(yearKey).substring(2)}`;
+      const label = filterMode === 'yearly'
+        ? monthShortNames[date.getMonth()]
+        : `${monthShortNames[date.getMonth()]} ${String(yearKey).substring(2)}`;
       
       if (!monthlyMap[key]) {
         monthlyMap[key] = { label, key, income: 0, expense: 0 };
@@ -117,16 +178,25 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
       }
     });
 
-    return Object.values(monthlyMap)
-      .sort((a, b) => a.key.localeCompare(b.key))
-      .slice(-6);
-  }, [transactions]);
+    const result = Object.values(monthlyMap).sort((a, b) => a.key.localeCompare(b.key));
+    
+    // If yearly, ensure all 12 months show up or present nicely
+    if (filterMode === 'yearly') {
+      const monthShortNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      return monthShortNames.map((mName, idx) => {
+        const mKey = `${selectedYear}-${String(idx).padStart(2, '0')}`;
+        return monthlyMap[mKey] || { label: mName, key: mKey, income: 0, expense: 0 };
+      });
+    }
 
-  // Chart 2: Income Breakdown by Service Category
+    return result.slice(-8); // Last 8 months if not yearly
+  }, [transactions, filterMode, selectedYear]);
+
+  // Chart 2: Income Breakdown by Service Category in selected period
   const categoryChartData = useMemo(() => {
     const categoryTotals: Record<string, number> = {};
 
-    transactions.forEach(t => {
+    filteredTransactions.forEach(t => {
       if (t.type === 'income') {
         const actualCash = getActualIncomeAmount(t);
         if (actualCash > 0) {
@@ -139,47 +209,152 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
     return Object.entries(categoryTotals)
       .map(([name, value]) => ({ name, value }))
       .filter(item => item.value > 0);
-  }, [transactions]);
+  }, [filteredTransactions]);
 
-  const COLORS = ['#6366f1', '#06b6d4', '#f59e0b', '#64748b'];
+  const COLORS = ['#6366f1', '#06b6d4', '#f59e0b', '#10b981', '#ec4899', '#64748b'];
 
-  // Latest 5 Transactions
+  // Latest 5 Transactions in selected period (or overall if empty)
   const recentTransactions = useMemo(() => {
-    return [...transactions]
+    const list = filteredTransactions.length > 0 ? filteredTransactions : transactions;
+    return [...list]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 5);
-  }, [transactions]);
+  }, [filteredTransactions, transactions]);
 
   return (
     <div className="space-y-6" id="dashboard-section">
-      {/* Welcome and Month Indicator */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
+      {/* Header & Interactive Period Filter Controls */}
+      <div className="bg-white p-5 md:p-6 rounded-2xl border border-slate-100 shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Ringkasan Keuangan Usaha</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-slate-800">Ringkasan Keuangan Usaha</h1>
+            <span className="hidden sm:inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full">
+              <Calendar className="w-3.5 h-3.5" />
+              {activePeriodLabel}
+            </span>
+          </div>
           <p className="text-slate-500 text-sm mt-1">
-            Sistem akuntansi
+            Pantau arus kas, laba rugi, dan tagihan usaha Anda berdasarkan rentang waktu.
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
-          <Clock className="w-4 h-4 text-slate-500" />
-          <span className="text-sm font-semibold text-slate-700">Periode Aktif: {currentPeriod.label}</span>
+
+        {/* Filter Toolbar */}
+        <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 text-sm">
+          {/* Filter Mode Selector */}
+          <div className="flex bg-white rounded-lg p-0.5 border border-slate-200 shadow-2xs">
+            <button
+              onClick={() => setFilterMode('monthly')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                filterMode === 'monthly'
+                  ? 'bg-indigo-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              Per Bulan
+            </button>
+            <button
+              onClick={() => setFilterMode('yearly')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                filterMode === 'yearly'
+                  ? 'bg-indigo-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              Per Tahun
+            </button>
+            <button
+              onClick={() => setFilterMode('all')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                filterMode === 'all'
+                  ? 'bg-indigo-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              Semua
+            </button>
+          </div>
+
+          {/* Month & Year Selectors */}
+          {filterMode === 'monthly' && (
+            <div className="flex items-center gap-1.5">
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="bg-white border border-slate-200 text-slate-800 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              >
+                {INDONESIAN_MONTHS.map((name, idx) => (
+                  <option key={name} value={idx}>{name}</option>
+                ))}
+              </select>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="bg-white border border-slate-200 text-slate-800 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              >
+                {availableYears.map(yr => (
+                  <option key={yr} value={yr}>{yr}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {filterMode === 'yearly' && (
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="bg-white border border-slate-200 text-slate-800 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+            >
+              {availableYears.map(yr => (
+                <option key={yr} value={yr}>Tahun {yr}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Reset to Real-time Month */}
+          <button
+            onClick={handleResetRealtime}
+            title="Reset ke Bulan Real-time (Bulan Ini)"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 rounded-lg text-xs font-semibold transition-all shadow-2xs ml-auto sm:ml-0"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Bulan Real-time</span>
+          </button>
         </div>
       </div>
+
+      {/* Notice if zero transactions in selected period */}
+      {filteredTransactions.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl flex items-center justify-between gap-3 text-sm">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+            <span>
+              Belum ada transaksi pada periode <strong>{activePeriodLabel}</strong>. Menampilkan angka Rp 0 untuk periode ini.
+            </span>
+          </div>
+          <button
+            onClick={handleResetRealtime}
+            className="text-xs font-bold text-amber-900 underline hover:no-underline shrink-0"
+          >
+            Reset ke Bulan Ini
+          </button>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         
         {/* Card 1: Total Pemasukan */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs relative overflow-hidden group hover:border-indigo-200 transition-all duration-200" id="card-pemasukan">
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs relative overflow-hidden group hover:border-emerald-200 transition-all duration-200" id="card-pemasukan">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Pemasukan</p>
-              <h3 className="text-xl font-bold text-slate-800 mt-2">{formatIDR(stats.totalIncome)}</h3>
-              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                Pemasukan ({activePeriodLabel})
+              </p>
+              <h3 className="text-xl font-bold text-slate-800 mt-2">{formatIDR(stats.periodIncome)}</h3>
+              <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
                 <span className="font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center">
-                  <ArrowUpRight className="w-3 h-3 inline" /> {formatIDR(stats.monthIncome)}
+                  <ArrowUpRight className="w-3 h-3 inline mr-0.5" /> Total Kas Masuk
                 </span>
-                <span>bulan ini</span>
               </p>
             </div>
             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
@@ -190,16 +365,17 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
         </div>
 
         {/* Card 2: Total Pengeluaran */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs relative overflow-hidden group hover:border-indigo-200 transition-all duration-200" id="card-pengeluaran">
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs relative overflow-hidden group hover:border-rose-200 transition-all duration-200" id="card-pengeluaran">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Pengeluaran</p>
-              <h3 className="text-xl font-bold text-slate-800 mt-2">{formatIDR(stats.totalExpense)}</h3>
-              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                Pengeluaran ({activePeriodLabel})
+              </p>
+              <h3 className="text-xl font-bold text-slate-800 mt-2">{formatIDR(stats.periodExpense)}</h3>
+              <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
                 <span className="font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded flex items-center">
-                  <ArrowDownRight className="w-3 h-3 inline" /> {formatIDR(stats.monthExpense)}
+                  <ArrowDownRight className="w-3 h-3 inline mr-0.5" /> Total Kas Keluar
                 </span>
-                <span>bulan ini</span>
               </p>
             </div>
             <div className="p-3 bg-rose-50 text-rose-600 rounded-xl">
@@ -213,15 +389,16 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs relative overflow-hidden group hover:border-indigo-200 transition-all duration-200" id="card-laba">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Laba Bersih</p>
-              <h3 className={`text-xl font-bold mt-2 ${stats.netProfit >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
-                {formatIDR(stats.netProfit)}
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                Laba Bersih ({activePeriodLabel})
+              </p>
+              <h3 className={`text-xl font-bold mt-2 ${stats.periodNetProfit >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
+                {formatIDR(stats.periodNetProfit)}
               </h3>
-              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                <span className={`font-semibold bg-indigo-50 px-1.5 py-0.5 rounded ${stats.monthNetProfit >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
-                  {formatIDR(stats.monthNetProfit)}
+              <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+                <span className={`font-semibold bg-indigo-50 px-1.5 py-0.5 rounded ${stats.periodNetProfit >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
+                  {stats.periodNetProfit >= 0 ? 'Surplus / Untung' : 'Defisit / Rugi'}
                 </span>
-                <span>bulan ini</span>
               </p>
             </div>
             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
@@ -232,13 +409,15 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
         </div>
 
         {/* Card 4: Piutang / Tagihan Pending */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs relative overflow-hidden group hover:border-indigo-200 transition-all duration-200" id="card-piutang">
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs relative overflow-hidden group hover:border-amber-200 transition-all duration-200" id="card-piutang">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Piutang / Pending</p>
-              <h3 className="text-xl font-bold text-amber-600 mt-2">{formatIDR(stats.pendingInvoicesVal)}</h3>
-              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                Piutang ({activePeriodLabel})
+              </p>
+              <h3 className="text-xl font-bold text-amber-600 mt-2">{formatIDR(stats.periodPiutang)}</h3>
+              <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 <span>Tagihan DP / Belum Lunas</span>
               </p>
             </div>
@@ -254,12 +433,16 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
       {/* Visualisasi Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Trend Monthly (Bar/Line Chart) */}
+        {/* Trend Monthly (Bar Chart) */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs lg:col-span-2 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="font-bold text-slate-800 text-base">Tren Bulanan</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Perbandingan pemasukan vs pengeluaran (6 bulan terakhir)</p>
+              <h3 className="font-bold text-slate-800 text-base">
+                Tren Kas {filterMode === 'yearly' ? `Tahun ${selectedYear}` : 'Per Bulan'}
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Perbandingan pemasukan vs pengeluaran ({filterMode === 'yearly' ? `12 Bulan ${selectedYear}` : 'Periode Terkini'})
+              </p>
             </div>
           </div>
           <div className="h-[280px] w-full">
@@ -290,12 +473,14 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex flex-col justify-between">
           <div>
             <h3 className="font-bold text-slate-800 text-base">Sumber Pemasukan</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Proporsi pemasukan berdasarkan layanan utama</p>
+            <p className="text-xs text-slate-400 mt-0.5">Proporsi pemasukan ({activePeriodLabel})</p>
           </div>
           
           <div className="h-[200px] w-full flex items-center justify-center my-4 relative">
             {categoryChartData.length === 0 ? (
-              <div className="text-slate-400 text-sm">Belum ada pemasukan tercatat</div>
+              <div className="text-slate-400 text-xs text-center px-4">
+                Tidak ada pemasukan tercatat pada {activePeriodLabel}
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -326,7 +511,7 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
                 <div key={item.name} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
-                    <span className="text-slate-600 font-medium">{item.name}</span>
+                    <span className="text-slate-600 font-medium truncate max-w-[120px]">{item.name}</span>
                   </div>
                   <div className="text-slate-800 font-semibold flex items-center gap-1.5">
                     <span>{formatIDR(item.value)}</span>
@@ -344,8 +529,10 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
       <div className="bg-white rounded-2xl border border-slate-100 shadow-xs overflow-hidden">
         <div className="p-5 flex items-center justify-between border-b border-slate-50">
           <div>
-            <h3 className="font-bold text-slate-800 text-base">Aktivitas Transaksi Terbaru</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Ringkasan 5 transaksi masuk dan keluar paling terakhir</p>
+            <h3 className="font-bold text-slate-800 text-base">
+              Aktivitas Transaksi {filteredTransactions.length > 0 ? `(${activePeriodLabel})` : 'Terbaru'}
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">Daftar transaksi kas masuk dan kas keluar</p>
           </div>
           <button 
             onClick={onNavigateToTransactions}
@@ -372,7 +559,7 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
               {recentTransactions.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-slate-400">
-                    Belum ada transaksi yang tercatat. Silakan tambah transaksi baru.
+                    Belum ada transaksi yang tercatat.
                   </td>
                 </tr>
               ) : (
@@ -429,3 +616,4 @@ export default function Dashboard({ transactions, onNavigateToTransactions, onEd
     </div>
   );
 }
+
