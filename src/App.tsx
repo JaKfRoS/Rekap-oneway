@@ -25,6 +25,7 @@ import {
   clearAllData,
   getSupabaseClient
 } from './utils/supabaseClient';
+import { fetchCategoriesAsync } from './utils/categories';
 import { Trash2 } from 'lucide-react';
 import { formatIDR, getActualIncomeAmount } from './utils/formatters';
 
@@ -73,6 +74,9 @@ export default function App() {
       setErrorMsg(null);
     }
     try {
+      // Sync categories from database in background
+      fetchCategoriesAsync(activeUser?.id).catch(() => {});
+
       const res = await getTransactions(activeDemo, activeUser?.id);
       setTransactions(prev => {
         if ((!res.data || res.data.length === 0) && prev.length > 0) {

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Edit2, Trash2, Check, AlertCircle, Tag } from 'lucide-react';
+import { X, Plus, Edit2, Trash2, Check, AlertCircle, Tag, Loader2 } from 'lucide-react';
 import { 
   getCategories, 
-  addCategory, 
-  updateCategory, 
-  deleteCategory, 
+  fetchCategoriesAsync,
+  addCategoryAsync, 
+  updateCategoryAsync, 
+  deleteCategoryAsync, 
   CategoryData 
 } from '../utils/categories';
 
@@ -26,6 +27,7 @@ export default function CategoryManagerModal({
   const [activeTab, setActiveTab] = useState<'income' | 'expense'>(initialType);
   const [categories, setCategories] = useState<CategoryData>({ income: [], expense: [] });
   const [newCatName, setNewCatName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Inline edit state
   const [editingCatName, setEditingCatName] = useState<string | null>(null);
@@ -39,15 +41,24 @@ export default function CategoryManagerModal({
     }
   }, [isOpen, initialType, userId]);
 
-  const refreshData = () => {
-    const data = getCategories(userId);
-    setCategories(data);
+  const refreshData = async () => {
+    // Immediate local load
+    const localData = getCategories(userId);
+    setCategories(localData);
     setErrorMsg('');
+
+    // Async cloud fetch from database
+    try {
+      const cloudData = await fetchCategoriesAsync(userId);
+      setCategories(cloudData);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   if (!isOpen) return null;
 
-  const handleAddCategory = (e: React.FormEvent) => {
+  const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     const trimmed = newCatName.trim();
@@ -59,10 +70,17 @@ export default function CategoryManagerModal({
       return;
     }
 
-    addCategory(activeTab, trimmed, userId);
-    setNewCatName('');
-    refreshData();
-    onCategoriesChanged();
+    setIsSubmitting(true);
+    try {
+      const updated = await addCategoryAsync(activeTab, trimmed, userId);
+      setCategories(updated);
+      setNewCatName('');
+      onCategoriesChanged();
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Gagal menyimpan kategori ke database.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleStartEdit = (catName: string) => {
@@ -71,7 +89,7 @@ export default function CategoryManagerModal({
     setErrorMsg('');
   };
 
-  const handleSaveEdit = (oldName: string) => {
+  const handleSaveEdit = async (oldName: string) => {
     setErrorMsg('');
     const trimmed = editInputValue.trim();
     if (!trimmed) {
@@ -85,13 +103,20 @@ export default function CategoryManagerModal({
       return;
     }
 
-    updateCategory(activeTab, oldName, trimmed, userId);
-    setEditingCatName(null);
-    refreshData();
-    onCategoriesChanged();
+    setIsSubmitting(true);
+    try {
+      const updated = await updateCategoryAsync(activeTab, oldName, trimmed, userId);
+      setCategories(updated);
+      setEditingCatName(null);
+      onCategoriesChanged();
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Gagal mengubah kategori.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDelete = (catName: string) => {
+  const handleDelete = async (catName: string) => {
     setErrorMsg('');
     const list = activeTab === 'income' ? categories.income : categories.expense;
     if (list.length <= 1) {
@@ -100,9 +125,16 @@ export default function CategoryManagerModal({
     }
 
     if (window.confirm(`Yakin ingin menghapus kategori "${catName}"?`)) {
-      deleteCategory(activeTab, catName, userId);
-      refreshData();
-      onCategoriesChanged();
+      setIsSubmitting(true);
+      try {
+        const updated = await deleteCategoryAsync(activeTab, catName, userId);
+        setCategories(updated);
+        onCategoriesChanged();
+      } catch (err: any) {
+        setErrorMsg(err?.message || 'Gagal menghapus kategori.');
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 

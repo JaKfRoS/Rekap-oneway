@@ -1,4 +1,10 @@
-import { saveCategoriesToSupabase } from './supabaseClient';
+import { 
+  saveCategoriesToSupabase, 
+  fetchCategoriesFromSupabaseDb,
+  addCategoryToSupabaseDb,
+  updateCategoryInSupabaseDb,
+  deleteCategoryFromSupabaseDb
+} from './supabaseClient';
 
 export const CATEGORIES_STORAGE_KEY = 'pembukuan_custom_categories';
 
@@ -62,13 +68,19 @@ export function getCategories(userId?: string): CategoryData {
   return defaultCategories;
 }
 
+export async function fetchCategoriesAsync(userId?: string): Promise<CategoryData> {
+  const res = await fetchCategoriesFromSupabaseDb(userId);
+  if (res.data) {
+    return res.data;
+  }
+  return getCategories(userId);
+}
+
 export function saveCategories(categories: CategoryData, userId?: string): void {
   const storageKey = getCategoryStorageKey(userId);
   localStorage.setItem(storageKey, JSON.stringify(categories));
-  // Sync categories to Supabase Cloud in the background if userId exists
-  if (userId) {
-    saveCategoriesToSupabase(categories, userId);
-  }
+  // Sync categories to Supabase Cloud in the background
+  saveCategoriesToSupabase(categories, userId);
 }
 
 export function addCategory(type: 'income' | 'expense', name: string, userId?: string): CategoryData {
@@ -88,6 +100,12 @@ export function addCategory(type: 'income' | 'expense', name: string, userId?: s
 
   saveCategories(current, userId);
   return current;
+}
+
+export async function addCategoryAsync(type: 'income' | 'expense', name: string, userId?: string): Promise<CategoryData> {
+  const updated = addCategory(type, name, userId);
+  await addCategoryToSupabaseDb(type, name, userId);
+  return updated;
 }
 
 export function updateCategory(type: 'income' | 'expense', oldName: string, newName: string, userId?: string): CategoryData {
@@ -111,6 +129,12 @@ export function updateCategory(type: 'income' | 'expense', oldName: string, newN
   return current;
 }
 
+export async function updateCategoryAsync(type: 'income' | 'expense', oldName: string, newName: string, userId?: string): Promise<CategoryData> {
+  const updated = updateCategory(type, oldName, newName, userId);
+  await updateCategoryInSupabaseDb(type, oldName, newName, userId);
+  return updated;
+}
+
 export function deleteCategory(type: 'income' | 'expense', name: string, userId?: string): CategoryData {
   const current = getCategories(userId);
   if (type === 'income') {
@@ -128,3 +152,10 @@ export function deleteCategory(type: 'income' | 'expense', name: string, userId?
   saveCategories(current, userId);
   return current;
 }
+
+export async function deleteCategoryAsync(type: 'income' | 'expense', name: string, userId?: string): Promise<CategoryData> {
+  const updated = deleteCategory(type, name, userId);
+  await deleteCategoryFromSupabaseDb(type, name, userId);
+  return updated;
+}
+

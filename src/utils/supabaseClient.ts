@@ -48,6 +48,150 @@ function getPastOrCurrentConfig(): SupabaseConfig | null {
 
 export const CONFIG_CATEGORY_ROW_ID = '00000000-0000-0000-0000-000000000000';
 
+export interface CategoryData {
+  income: string[];
+  expense: string[];
+}
+
+export async function fetchCategoriesFromSupabaseDb(userId?: string): Promise<{ data: CategoryData | null; source: 'categories_table' | 'legacy_config' | 'local' }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { data: null, source: 'local' };
+
+  try {
+    // 1. Try querying dedicated 'categories' table
+    let query = supabase.from('categories').select('id, type, name, user_id').order('created_at', { ascending: true });
+    
+    if (userId) {
+      query = query.or(`user_id.eq.${userId},user_id.is.null`);
+    }
+
+    const { data: catRows, error: catErr } = await query;
+
+    if (!catErr && Array.isArray(catRows)) {
+      if (catRows.length > 0) {
+        const income = catRows.filter((r: any) => r.type === 'income').map((r: any) => r.name);
+        const expense = catRows.filter((r: any) => r.type === 'expense').map((r: any) => r.name);
+
+        const categoriesData: CategoryData = {
+          income: income.length > 0 ? Array.from(new Set(income)) : [...DEFAULT_INCOME_CATEGORIES],
+          expense: expense.length > 0 ? Array.from(new Set(expense)) : [...DEFAULT_EXPENSE_CATEGORIES]
+        };
+
+        const storageKey = userId ? `pembukuan_categories_${userId}` : CATEGORIES_STORAGE_KEY;
+        localStorage.setItem(storageKey, JSON.stringify(categoriesData));
+        return { data: categoriesData, source: 'categories_table' };
+      } else if (userId) {
+        // Table exists but is empty for user -> seed initial default categories to Supabase
+        const seedRows = [
+          ...DEFAULT_INCOME_CATEGORIES.map(name => ({ type: 'income', name, user_id: userId })),
+          ...DEFAULT_EXPENSE_CATEGORIES.map(name => ({ type: 'expense', name, user_id: userId }))
+        ];
+
+        await supabase.from('categories').insert(seedRows);
+
+        const defaultData: CategoryData = {
+          income: [...DEFAULT_INCOME_CATEGORIES],
+          expense: [...DEFAULT_EXPENSE_CATEGORIES]
+        };
+
+        const storageKey = `pembukuan_categories_${userId}`;
+        localStorage.setItem(storageKey, JSON.stringify(defaultData));
+        return { data: defaultData, source: 'categories_table' };
+      }
+    }
+  } catch (err) {
+    console.warn("Table 'categories' not present or unreachable, falling back to legacy config row:", err);
+  }
+
+  // 2. Fallback to legacy config row in transactions table
+  try {
+    const configId = userId ? `${CONFIG_CATEGORY_ROW_ID}_${userId}` : CONFIG_CATEGORY_ROW_ID;
+    const { data: configRows } = await supabase
+      .from('transactions')
+      .select('notes')
+      .or(`id.eq.${configId},category.eq.__SYSTEM_CATEGORIES_CONFIG__`);
+
+    if (configRows && configRows.length > 0) {
+      for (const row of configRows) {
+        if (row.notes) {
+          try {
+            const parsed = JSON.parse(row.notes);
+            if (parsed && Array.isArray(parsed.income) && Array.isArray(parsed.expense)) {
+              const storageKey = userId ? `pembukuan_categories_${userId}` : CATEGORIES_STORAGE_KEY;
+              localStorage.setItem(storageKey, JSON.stringify(parsed));
+              return { data: parsed, source: 'legacy_config' };
+            }
+          } catch (e) {}
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Error fetching legacy category config:", err);
+  }
+
+  return { data: null, source: 'local' };
+}
+
+export async function addCategoryToSupabaseDb(type: 'income' | 'expense', name: string, userId?: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+
+  try {
+    const payload: any = { type, name: trimmed };
+    if (userId) payload.user_id = userId;
+
+    const { error } = await supabase.from('categories').insert(payload);
+    if (!error) return true;
+    console.warn("Gagal insert ke tabel categories, fallback:", error.message);
+  } catch (e) {
+    console.warn("Exception saat insert category:", e);
+  }
+
+  return false;
+}
+
+export async function updateCategoryInSupabaseDb(type: 'income' | 'expense', oldName: string, newName: string, userId?: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+
+  const trimmed = newName.trim();
+  if (!trimmed || oldName === trimmed) return false;
+
+  try {
+    let query = supabase.from('categories').update({ name: trimmed }).eq('type', type).eq('name', oldName);
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+    const { error } = await query;
+    if (!error) return true;
+  } catch (e) {
+    console.warn("Exception saat update category:", e);
+  }
+
+  return false;
+}
+
+export async function deleteCategoryFromSupabaseDb(type: 'income' | 'expense', name: string, userId?: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+
+  try {
+    let query = supabase.from('categories').delete().eq('type', type).eq('name', name);
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+    const { error } = await query;
+    if (!error) return true;
+  } catch (e) {
+    console.warn("Exception saat delete category:", e);
+  }
+
+  return false;
+}
+
 export async function saveCategoriesToSupabase(categories: { income: string[]; expense: string[] }, userId?: string): Promise<{ success: boolean; error?: string }> {
   const storageKey = userId ? `pembukuan_categories_${userId}` : CATEGORIES_STORAGE_KEY;
   localStorage.setItem(storageKey, JSON.stringify(categories));
@@ -56,6 +200,7 @@ export async function saveCategoriesToSupabase(categories: { income: string[]; e
   if (!supabase) return { success: true };
 
   try {
+    // Save to legacy config row as backup
     const configId = userId ? `${CONFIG_CATEGORY_ROW_ID}_${userId}` : CONFIG_CATEGORY_ROW_ID;
     const payload: any = {
       id: configId,
@@ -80,14 +225,8 @@ export async function saveCategoriesToSupabase(categories: { income: string[]; e
       error = retry.error;
     }
 
-    if (error) {
-      console.warn("Gagal menyimpan kategori ke Supabase config row:", error);
-      return { success: false, error: error.message };
-    }
-
     return { success: true };
   } catch (err: any) {
-    console.warn("Error saat menyimpan kategori ke Supabase:", err);
     return { success: false, error: err.message || String(err) };
   }
 }

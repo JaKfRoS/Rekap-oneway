@@ -7,7 +7,7 @@ interface SqlModalProps {
 }
 
 export const SQL_SCRIPT = `-- ====================================================================
--- SKRIP SETUP SUPABASE KASUSAHA (MULTI-USER & REALTIME SINKRONISASI)
+-- SKRIP SETUP SUPABASE KASUSAHA (MULTI-USER, CATEGORIES & REALTIME)
 -- ====================================================================
 -- Petunjuk Penggunaan:
 -- 1. Buka dashboard Supabase Anda (https://supabase.com/dashboard)
@@ -44,43 +44,89 @@ BEGIN
     END IF;
 END $$;
 
--- 3. Aktifkan Row Level Security (RLS) agar tiap pengguna hanya melihat datanya sendiri
+-- 3. Aktifkan Row Level Security (RLS) untuk transactions
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
--- 4. Hapus policy lama jika ada agar tidak bentrok
 DROP POLICY IF EXISTS "Users can view own transactions" ON public.transactions;
 DROP POLICY IF EXISTS "Users can insert own transactions" ON public.transactions;
 DROP POLICY IF EXISTS "Users can update own transactions" ON public.transactions;
 DROP POLICY IF EXISTS "Users can delete own transactions" ON public.transactions;
 DROP POLICY IF EXISTS "Allow anon public access" ON public.transactions;
 
--- 5. Buat Kebijakan Keamanan Multi-Pengguna (RLS Policies)
--- Memungkinkan pengguna melihat data milik mereka sendiri (atau data publik tanpa user_id)
 CREATE POLICY "Users can view own transactions" 
 ON public.transactions FOR SELECT 
 USING (auth.uid() = user_id OR user_id IS NULL);
 
--- Memungkinkan pengguna menambah transaksi baru untuk akun mereka
 CREATE POLICY "Users can insert own transactions" 
 ON public.transactions FOR INSERT 
 WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
 
--- Memungkinkan pengguna mengedit transaksi mereka
 CREATE POLICY "Users can update own transactions" 
 ON public.transactions FOR UPDATE 
 USING (auth.uid() = user_id OR user_id IS NULL);
 
--- Memungkinkan pengguna menghapus transaksi mereka
 CREATE POLICY "Users can delete own transactions" 
 ON public.transactions FOR DELETE 
 USING (auth.uid() = user_id OR user_id IS NULL);
 
--- 6. Tambahkan indeks performa untuk query berbasis user_id
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON public.transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON public.transactions(date);
 
--- 7. Aktifkan fitur Supabase Realtime Sinkronisasi untuk tabel transactions
-ALTER PUBLICATION supabase_realtime ADD TABLE public.transactions;
+-- ====================================================================
+-- 4. Buat Tabel Kategori Kustom (public.categories)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS public.categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    user_id UUID DEFAULT auth.uid(),
+    type VARCHAR(20) NOT NULL CHECK (type IN ('income', 'expense')),
+    name TEXT NOT NULL,
+    CONSTRAINT categories_user_type_name_key UNIQUE (user_id, type, name)
+);
+
+-- Aktifkan Row Level Security (RLS) untuk categories
+ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own categories" ON public.categories;
+DROP POLICY IF EXISTS "Users can insert own categories" ON public.categories;
+DROP POLICY IF EXISTS "Users can update own categories" ON public.categories;
+DROP POLICY IF EXISTS "Users can delete own categories" ON public.categories;
+
+CREATE POLICY "Users can view own categories" 
+ON public.categories FOR SELECT 
+USING (auth.uid() = user_id OR user_id IS NULL);
+
+CREATE POLICY "Users can insert own categories" 
+ON public.categories FOR INSERT 
+WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
+
+CREATE POLICY "Users can update own categories" 
+ON public.categories FOR UPDATE 
+USING (auth.uid() = user_id OR user_id IS NULL);
+
+CREATE POLICY "Users can delete own categories" 
+ON public.categories FOR DELETE 
+USING (auth.uid() = user_id OR user_id IS NULL);
+
+CREATE INDEX IF NOT EXISTS idx_categories_user_id ON public.categories(user_id);
+
+-- 5. Aktifkan fitur Supabase Realtime Sinkronisasi untuk tabel transactions dan categories
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' AND tablename = 'transactions'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.transactions;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' AND tablename = 'categories'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.categories;
+    END IF;
+END $$;
 `;
 
 export const SqlModal: React.FC<SqlModalProps> = ({ isOpen, onClose }) => {
