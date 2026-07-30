@@ -57,15 +57,17 @@ export async function fetchCategoriesFromSupabaseDb(userId?: string): Promise<{ 
   const supabase = getSupabaseClient();
   if (!supabase) return { data: null, source: 'local' };
 
-  try {
-    // 1. Try querying dedicated 'categories' table
-    let query = supabase.from('categories').select('id, type, name, user_id').order('created_at', { ascending: true });
-    
-    if (userId) {
-      query = query.or(`user_id.eq.${userId},user_id.is.null`);
-    }
+  if (!userId) {
+    return { data: null, source: 'local' };
+  }
 
-    const { data: catRows, error: catErr } = await query;
+  try {
+    // Query dedicated 'categories' table strictly for this userId
+    const { data: catRows, error: catErr } = await supabase
+      .from('categories')
+      .select('id, type, name, user_id')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
 
     if (!catErr && Array.isArray(catRows)) {
       if (catRows.length > 0) {
@@ -77,11 +79,11 @@ export async function fetchCategoriesFromSupabaseDb(userId?: string): Promise<{ 
           expense: expense.length > 0 ? Array.from(new Set(expense)) : [...DEFAULT_EXPENSE_CATEGORIES]
         };
 
-        const storageKey = userId ? `pembukuan_categories_${userId}` : CATEGORIES_STORAGE_KEY;
+        const storageKey = `pembukuan_categories_${userId}`;
         localStorage.setItem(storageKey, JSON.stringify(categoriesData));
         return { data: categoriesData, source: 'categories_table' };
-      } else if (userId) {
-        // Table exists but is empty for user -> seed initial default categories to Supabase
+      } else {
+        // Table exists but is empty for this user -> seed initial default categories to Supabase
         const seedRows = [
           ...DEFAULT_INCOME_CATEGORIES.map(name => ({ type: 'income', name, user_id: userId })),
           ...DEFAULT_EXPENSE_CATEGORIES.map(name => ({ type: 'expense', name, user_id: userId }))
@@ -100,33 +102,7 @@ export async function fetchCategoriesFromSupabaseDb(userId?: string): Promise<{ 
       }
     }
   } catch (err) {
-    console.warn("Table 'categories' not present or unreachable, falling back to legacy config row:", err);
-  }
-
-  // 2. Fallback to legacy config row in transactions table
-  try {
-    const configId = userId ? `${CONFIG_CATEGORY_ROW_ID}_${userId}` : CONFIG_CATEGORY_ROW_ID;
-    const { data: configRows } = await supabase
-      .from('transactions')
-      .select('notes')
-      .or(`id.eq.${configId},category.eq.__SYSTEM_CATEGORIES_CONFIG__`);
-
-    if (configRows && configRows.length > 0) {
-      for (const row of configRows) {
-        if (row.notes) {
-          try {
-            const parsed = JSON.parse(row.notes);
-            if (parsed && Array.isArray(parsed.income) && Array.isArray(parsed.expense)) {
-              const storageKey = userId ? `pembukuan_categories_${userId}` : CATEGORIES_STORAGE_KEY;
-              localStorage.setItem(storageKey, JSON.stringify(parsed));
-              return { data: parsed, source: 'legacy_config' };
-            }
-          } catch (e) {}
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("Error fetching legacy category config:", err);
+    console.warn("Table 'categories' query exception:", err);
   }
 
   return { data: null, source: 'local' };
@@ -134,18 +110,16 @@ export async function fetchCategoriesFromSupabaseDb(userId?: string): Promise<{ 
 
 export async function addCategoryToSupabaseDb(type: 'income' | 'expense', name: string, userId?: string): Promise<boolean> {
   const supabase = getSupabaseClient();
-  if (!supabase) return false;
+  if (!supabase || !userId) return false;
 
   const trimmed = name.trim();
   if (!trimmed) return false;
 
   try {
-    const payload: any = { type, name: trimmed };
-    if (userId) payload.user_id = userId;
-
+    const payload: any = { type, name: trimmed, user_id: userId };
     const { error } = await supabase.from('categories').insert(payload);
     if (!error) return true;
-    console.warn("Gagal insert ke tabel categories, fallback:", error.message);
+    console.warn("Gagal insert ke tabel categories:", error.message);
   } catch (e) {
     console.warn("Exception saat insert category:", e);
   }
@@ -155,17 +129,19 @@ export async function addCategoryToSupabaseDb(type: 'income' | 'expense', name: 
 
 export async function updateCategoryInSupabaseDb(type: 'income' | 'expense', oldName: string, newName: string, userId?: string): Promise<boolean> {
   const supabase = getSupabaseClient();
-  if (!supabase) return false;
+  if (!supabase || !userId) return false;
 
   const trimmed = newName.trim();
   if (!trimmed || oldName === trimmed) return false;
 
   try {
-    let query = supabase.from('categories').update({ name: trimmed }).eq('type', type).eq('name', oldName);
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
-    const { error } = await query;
+    const { error } = await supabase
+      .from('categories')
+      .update({ name: trimmed })
+      .eq('type', type)
+      .eq('name', oldName)
+      .eq('user_id', userId);
+
     if (!error) return true;
   } catch (e) {
     console.warn("Exception saat update category:", e);
@@ -176,14 +152,16 @@ export async function updateCategoryInSupabaseDb(type: 'income' | 'expense', old
 
 export async function deleteCategoryFromSupabaseDb(type: 'income' | 'expense', name: string, userId?: string): Promise<boolean> {
   const supabase = getSupabaseClient();
-  if (!supabase) return false;
+  if (!supabase || !userId) return false;
 
   try {
-    let query = supabase.from('categories').delete().eq('type', type).eq('name', name);
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
-    const { error } = await query;
+    const { error } = await supabase
+      .from('categories')
+      .delete()
+      .eq('type', type)
+      .eq('name', name)
+      .eq('user_id', userId);
+
     if (!error) return true;
   } catch (e) {
     console.warn("Exception saat delete category:", e);
@@ -193,38 +171,21 @@ export async function deleteCategoryFromSupabaseDb(type: 'income' | 'expense', n
 }
 
 export async function saveCategoriesToSupabase(categories: { income: string[]; expense: string[] }, userId?: string): Promise<{ success: boolean; error?: string }> {
-  const storageKey = userId ? `pembukuan_categories_${userId}` : CATEGORIES_STORAGE_KEY;
+  if (!userId) return { success: true };
+  const storageKey = `pembukuan_categories_${userId}`;
   localStorage.setItem(storageKey, JSON.stringify(categories));
 
   const supabase = getSupabaseClient();
   if (!supabase) return { success: true };
 
   try {
-    // Save to legacy config row as backup
-    const configId = userId ? `${CONFIG_CATEGORY_ROW_ID}_${userId}` : CONFIG_CATEGORY_ROW_ID;
-    const payload: any = {
-      id: configId,
-      date: '2000-01-01',
-      type: 'income',
-      category: '__SYSTEM_CATEGORIES_CONFIG__',
-      client_name: '__SYSTEM_CATEGORIES_CONFIG__',
-      amount: 0,
-      dp_amount: null,
-      payment_status: 'paid',
-      notes: JSON.stringify(categories)
-    };
+    // Batch upsert to categories table for this user
+    const rows = [
+      ...categories.income.map(name => ({ type: 'income', name, user_id: userId })),
+      ...categories.expense.map(name => ({ type: 'expense', name, user_id: userId }))
+    ];
 
-    if (userId) {
-      payload.user_id = userId;
-    }
-
-    let { error } = await supabase.from('transactions').upsert(payload);
-    if (error && isDpAmountColumnError(error)) {
-      delete payload.dp_amount;
-      const retry = await supabase.from('transactions').upsert(payload);
-      error = retry.error;
-    }
-
+    await supabase.from('categories').upsert(rows, { onConflict: 'user_id,type,name' });
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message || String(err) };
@@ -347,15 +308,17 @@ export async function getTransactions(
     return { data: demoData, source: 'local' };
   }
 
-  const activeUserId = userId || 'guest';
-  const initialLocalData = getLocalUserTransactions(activeUserId);
-  const deletedIds = getDeletedUserTransactionIds(activeUserId);
+  // 2. If no user is logged in, use local guest storage
+  if (!userId) {
+    const guestData = getLocalUserTransactions('guest');
+    return { data: guestData, source: 'local' };
+  }
 
   const supabase = getSupabaseClient();
   
   if (!supabase) {
-    const filteredLocal = initialLocalData.filter(t => !deletedIds.has(t.id));
-    return { data: filteredLocal, source: 'local', error: 'Database Supabase tidak terhubung. Menggunakan data lokal.' };
+    const localData = getLocalUserTransactions(userId);
+    return { data: localData, source: 'local', error: 'Database Supabase tidak terhubung. Menggunakan data simpanan lokal.' };
   }
 
   try {
@@ -363,9 +326,11 @@ export async function getTransactions(
       setTimeout(() => reject(new Error('Koneksi Supabase memakan waktu terlalu lama (Timeout).')), 5000)
     );
 
+    // Strictly fetch ONLY transactions for this specific userId from Supabase
     const fetchPromise = supabase
       .from('transactions')
       .select('*')
+      .eq('user_id', userId)
       .order('date', { ascending: false });
 
     const { data, error }: any = await Promise.race([fetchPromise, timeoutPromise]);
@@ -375,9 +340,7 @@ export async function getTransactions(
     }
 
     if (data) {
-      let remoteCategories: { income: string[]; expense: string[] } | null = null;
-
-      // Filter system config rows and enforce strict user data separation
+      // Filter out system config rows
       const actualDbRows = data.filter((item: any) => {
         if (
           item.id === CONFIG_CATEGORY_ROW_ID ||
@@ -385,35 +348,12 @@ export async function getTransactions(
           item.category === '__SYSTEM_CATEGORIES_CONFIG__' ||
           item.client_name === '__SYSTEM_CATEGORIES_CONFIG__'
         ) {
-          if (item.notes && (item.user_id === activeUserId || !item.user_id)) {
-            try {
-              const parsed = JSON.parse(item.notes);
-              if (parsed && Array.isArray(parsed.income) && Array.isArray(parsed.expense)) {
-                remoteCategories = parsed;
-              }
-            } catch (e) {}
-          }
           return false;
         }
-
-        // Strict User Separation: If item has user_id, it MUST belong to current user (or be unassigned/guest)
-        if (userId && item.user_id && item.user_id !== userId) {
-          return false;
-        }
-
-        // Filter out deleted items
-        if (deletedIds.has(item.id)) {
-          return false;
-        }
-
         return true;
       });
 
-      // ALWAYS fetch fresh local transactions to prevent overwriting newly added items while query was pending
-      const freshLocalData = getLocalUserTransactions(activeUserId);
-
       const localMap = new Map<string, number | null>();
-      freshLocalData.forEach(t => localMap.set(t.id, t.dp_amount ?? null));
 
       const mappedData: Transaction[] = actualDbRows.map((item: any) => {
         const { dpAmount, cleanNotes } = parseDpAmountFromItem(item, localMap);
@@ -431,31 +371,21 @@ export async function getTransactions(
         };
       });
 
-      // Merge DB rows with fresh local user cache to preserve recent local additions/updates
-      const dbIds = new Set(mappedData.map(t => t.id));
-      const missingLocal = freshLocalData.filter(t => !dbIds.has(t.id) && !deletedIds.has(t.id));
-
-      const mergedData = [...mappedData, ...missingLocal].sort((a, b) => 
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
-
-      // Update user-specific local cache safely
-      setLocalUserTransactions(activeUserId, mergedData);
-      return { data: mergedData, source: 'supabase' };
+      // Update user-specific local cache for offline viewing
+      setLocalUserTransactions(userId, mappedData);
+      return { data: mappedData, source: 'supabase' };
     }
   } catch (err: any) {
     console.warn("Gagal menarik data dari Supabase cloud (menggunakan cache lokal):", err);
-    const latestLocal = getLocalUserTransactions(activeUserId);
-    const filteredLocal = latestLocal.filter(t => !deletedIds.has(t.id));
+    const userLocal = getLocalUserTransactions(userId);
     return { 
-      data: filteredLocal, 
+      data: userLocal, 
       source: 'local'
     };
   }
 
-  const latestLocal = getLocalUserTransactions(activeUserId);
-  const filteredLocal = latestLocal.filter(t => !deletedIds.has(t.id));
-  return { data: filteredLocal, source: 'local' };
+  const userLocal = getLocalUserTransactions(userId);
+  return { data: userLocal, source: 'local' };
 }
 
 export async function addTransaction(
@@ -482,10 +412,7 @@ export async function addTransaction(
 
   const activeUserId = userId || 'guest';
 
-  // Ensure item is removed from deleted tracking if re-added
-  removeDeletedUserTransactionId(activeUserId, id);
-
-  // ALWAYS save to local user cache first so data is instantly persistent
+  // Save to user-specific local cache
   const localTx = getLocalUserTransactions(activeUserId);
   const updatedLocal = [newTransaction, ...localTx.filter(t => t.id !== id)];
   setLocalUserTransactions(activeUserId, updatedLocal);
@@ -508,9 +435,12 @@ export async function addTransaction(
       amount: newTransaction.amount,
       dp_amount: newTransaction.dp_amount || null,
       payment_status: newTransaction.payment_status,
-      notes: notesForDb,
-      user_id: userId
+      notes: notesForDb
     };
+
+    if (userId) {
+      payload.user_id = userId;
+    }
 
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('Koneksi Cloud memakan waktu terlalu lama (Timeout).')), 3500)
@@ -521,14 +451,10 @@ export async function addTransaction(
         .from('transactions')
         .insert([payload]);
 
-      if (error) {
-        const errMsg = (error.message || '').toLowerCase();
-        if (errMsg.includes('user_id') || errMsg.includes('dp_amount')) {
-          if (errMsg.includes('user_id')) delete payload.user_id;
-          if (errMsg.includes('dp_amount')) delete payload.dp_amount;
-          const retry = await supabase.from('transactions').insert([payload]);
-          error = retry.error;
-        }
+      if (error && isDpAmountColumnError(error)) {
+        delete payload.dp_amount;
+        const retry = await supabase.from('transactions').insert([payload]);
+        error = retry.error;
       }
       return error;
     })();
@@ -536,17 +462,17 @@ export async function addTransaction(
     const error: any = await Promise.race([insertWork, timeoutPromise]);
 
     if (error) {
-      console.warn("Gagal menyimpan ke Supabase cloud, transaksi disimpan secara lokal:", error);
-      return { success: true, data: newTransaction, error: `Tersimpan secara lokal (Peringatan Cloud: ${error.message})` };
+      console.warn("Gagal menyimpan ke Supabase cloud:", error);
+      return { success: false, data: newTransaction, error: `Gagal menyimpan ke database cloud: ${error.message}` };
     }
 
     return { success: true, data: newTransaction };
   } catch (err: any) {
-    console.warn("Error menyimpan ke Supabase cloud, transaksi disimpan secara lokal:", err);
+    console.warn("Error menyimpan ke Supabase cloud:", err);
     return { 
-      success: true, 
+      success: false, 
       data: newTransaction, 
-      error: `Tersimpan secara lokal (Peringatan Cloud: ${err.message || err})` 
+      error: `Error database cloud: ${err.message || err}` 
     };
   }
 }
@@ -565,10 +491,7 @@ export async function updateTransaction(
 
   const activeUserId = userId || 'guest';
 
-  // Ensure item is not tracked as deleted
-  removeDeletedUserTransactionId(activeUserId, transaction.id);
-
-  // ALWAYS update local user cache first
+  // Update user-specific local cache
   const localTx = getLocalUserTransactions(activeUserId);
   const updatedLocal = localTx.map(item => item.id === transaction.id ? transaction : item);
   setLocalUserTransactions(activeUserId, updatedLocal);
@@ -597,17 +520,19 @@ export async function updateTransaction(
     );
 
     const updateWork = (async () => {
-      let { error } = await supabase
-        .from('transactions')
-        .update(payload)
-        .eq('id', transaction.id);
+      let query = supabase.from('transactions').update(payload).eq('id', transaction.id);
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+      let { error } = await query;
 
       if (error && isDpAmountColumnError(error)) {
         delete payload.dp_amount;
-        const retry = await supabase
-          .from('transactions')
-          .update(payload)
-          .eq('id', transaction.id);
+        let retryQuery = supabase.from('transactions').update(payload).eq('id', transaction.id);
+        if (userId) {
+          retryQuery = retryQuery.eq('user_id', userId);
+        }
+        const retry = await retryQuery;
         error = retry.error;
       }
       return error;
@@ -616,17 +541,17 @@ export async function updateTransaction(
     const error: any = await Promise.race([updateWork, timeoutPromise]);
 
     if (error) {
-      console.warn("Gagal mengupdate di Supabase cloud, perubahan disimpan secara lokal:", error);
-      return { success: true, data: transaction, error: `Perubahan tersimpan lokal (Peringatan Cloud: ${error.message})` };
+      console.warn("Gagal mengupdate di Supabase cloud:", error);
+      return { success: false, data: transaction, error: `Gagal update database: ${error.message}` };
     }
 
     return { success: true, data: transaction };
   } catch (err: any) {
-    console.warn("Error mengupdate di Supabase cloud, perubahan disimpan secara lokal:", err);
+    console.warn("Error mengupdate di Supabase cloud:", err);
     return { 
-      success: true, 
+      success: false, 
       data: transaction, 
-      error: `Perubahan tersimpan lokal (Peringatan Cloud: ${err.message || err})` 
+      error: `Error update database: ${err.message || err}` 
     };
   }
 }
@@ -645,10 +570,7 @@ export async function deleteTransaction(
 
   const activeUserId = userId || 'guest';
 
-  // Mark ID as deleted locally
-  addDeletedUserTransactionId(activeUserId, id);
-
-  // ALWAYS remove from local user cache
+  // Remove from user-specific local cache
   const localTx = getLocalUserTransactions(activeUserId);
   const updatedLocal = localTx.filter(item => item.id !== id);
   setLocalUserTransactions(activeUserId, updatedLocal);
@@ -664,23 +586,25 @@ export async function deleteTransaction(
     );
 
     const deleteWork = (async () => {
-      const { error } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('id', id);
+      let query = supabase.from('transactions').delete().eq('id', id);
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+      const { error } = await query;
       return error;
     })();
 
     const error: any = await Promise.race([deleteWork, timeoutPromise]);
 
     if (error) {
-      console.warn("Gagal menghapus dari Supabase cloud, item tetap dihapus dari tampilan lokal:", error);
+      console.warn("Gagal menghapus dari Supabase cloud:", error);
+      return { success: false, error: error.message };
     }
 
     return { success: true };
   } catch (err: any) {
-    console.warn("Error menghapus dari Supabase cloud, item tetap dihapus dari tampilan lokal:", err);
-    return { success: true };
+    console.warn("Error menghapus dari Supabase cloud:", err);
+    return { success: false, error: err.message || String(err) };
   }
 }
 
@@ -695,15 +619,20 @@ export async function clearAllData(
 
   if (!userId) return { success: true };
 
-  // Clear local user cache
+  // Clear user-specific local cache
   setLocalUserTransactions(userId, []);
 
   const supabase = getSupabaseClient();
   if (supabase) {
     try {
-      // Only delete transactions belonging to this specific user
+      // Only delete transactions and categories belonging to this specific user
       await supabase
         .from('transactions')
+        .delete()
+        .eq('user_id', userId);
+
+      await supabase
+        .from('categories')
         .delete()
         .eq('user_id', userId);
     } catch (err: any) {

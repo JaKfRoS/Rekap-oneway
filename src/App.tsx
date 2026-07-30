@@ -78,12 +78,7 @@ export default function App() {
       fetchCategoriesAsync(activeUser?.id).catch(() => {});
 
       const res = await getTransactions(activeDemo, activeUser?.id);
-      setTransactions(prev => {
-        if ((!res.data || res.data.length === 0) && prev.length > 0) {
-          return prev;
-        }
-        return res.data;
-      });
+      setTransactions(res.data || []);
       setDataSource(activeDemo ? 'local' : res.source);
       if (res.error && !silent) {
         setErrorMsg(res.error);
@@ -127,12 +122,13 @@ export default function App() {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         const user = session?.user ?? null;
         setCurrentUser(user);
+        setTransactions([]);
         if (user) {
           setIsDemoMode(false);
         }
         setIsAuthChecking(false);
         clearTimeout(authFallbackTimeout);
-        loadData(user ? false : isDemoMode, user);
+        loadData(user ? false : isDemoMode, user, true);
       });
       authListener = subscription;
     } else {

@@ -55,19 +55,19 @@ DROP POLICY IF EXISTS "Allow anon public access" ON public.transactions;
 
 CREATE POLICY "Users can view own transactions" 
 ON public.transactions FOR SELECT 
-USING (auth.uid() = user_id OR user_id IS NULL);
+USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can insert own transactions" 
 ON public.transactions FOR INSERT 
-WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
+WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can update own transactions" 
 ON public.transactions FOR UPDATE 
-USING (auth.uid() = user_id OR user_id IS NULL);
+USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can delete own transactions" 
 ON public.transactions FOR DELETE 
-USING (auth.uid() = user_id OR user_id IS NULL);
+USING (auth.uid() = user_id);
 
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON public.transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON public.transactions(date);
@@ -94,38 +94,40 @@ DROP POLICY IF EXISTS "Users can delete own categories" ON public.categories;
 
 CREATE POLICY "Users can view own categories" 
 ON public.categories FOR SELECT 
-USING (auth.uid() = user_id OR user_id IS NULL);
+USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can insert own categories" 
 ON public.categories FOR INSERT 
-WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
+WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can update own categories" 
 ON public.categories FOR UPDATE 
-USING (auth.uid() = user_id OR user_id IS NULL);
+USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can delete own categories" 
 ON public.categories FOR DELETE 
-USING (auth.uid() = user_id OR user_id IS NULL);
+USING (auth.uid() = user_id);
 
 CREATE INDEX IF NOT EXISTS idx_categories_user_id ON public.categories(user_id);
 
 -- 5. Aktifkan fitur Supabase Realtime Sinkronisasi untuk tabel transactions dan categories
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_publication_tables 
-        WHERE pubname = 'supabase_realtime' AND tablename = 'transactions'
-    ) THEN
-        ALTER PUBLICATION supabase_realtime ADD TABLE public.transactions;
-    END IF;
+    -- Aktifkan Realtime untuk tabel transactions (abaikan jika sudah aktif)
+    BEGIN
+        EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.transactions';
+    EXCEPTION
+        WHEN duplicate_object THEN NULL;
+        WHEN OTHERS THEN NULL;
+    END;
 
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_publication_tables 
-        WHERE pubname = 'supabase_realtime' AND tablename = 'categories'
-    ) THEN
-        ALTER PUBLICATION supabase_realtime ADD TABLE public.categories;
-    END IF;
+    -- Aktifkan Realtime untuk tabel categories (abaikan jika sudah aktif)
+    BEGIN
+        EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.categories';
+    EXCEPTION
+        WHEN duplicate_object THEN NULL;
+        WHEN OTHERS THEN NULL;
+    END;
 END $$;
 `;
 
