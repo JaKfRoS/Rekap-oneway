@@ -1,28 +1,20 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   PlusCircle, 
   Search, 
   Trash2, 
   Edit2, 
-  X, 
-  Calendar, 
-  User, 
-  DollarSign, 
-  BookOpen, 
-  ArrowUpCircle, 
-  ArrowDownCircle,
-  AlertCircle,
-  CheckCircle,
-  Undo,
-  Tag,
-  Clock,
-  Check
+  Undo, 
+  Tag, 
+  Clock, 
+  Check 
 } from 'lucide-react';
 import { Transaction } from '../utils/dummyData';
 import { formatIDR, formatShortDate, getActualIncomeAmount, getPiutangAmount } from '../utils/formatters';
-import { getCategories, CategoryData } from '../utils/categories';
+import { getCategories } from '../utils/categories';
 import CategoryManagerModal from './CategoryManagerModal';
 import PelunasanModal from './PelunasanModal';
+import TransactionModal from './TransactionModal';
 
 interface TransactionsProps {
   transactions: Transaction[];
@@ -43,7 +35,7 @@ export default function Transactions({
   setEditingTransaction,
   userId
 }: TransactionsProps) {
-  // Navigation & Form Toggle
+  // Modal / Form Toggle State
   const [showForm, setShowForm] = useState<'income' | 'expense' | null>(null);
 
   // Custom Categories state & version trigger
@@ -64,117 +56,22 @@ export default function Transactions({
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Form States (for Create & Edit)
-  const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
-  const [formCategory, setFormCategory] = useState('');
-  const [formClientName, setFormClientName] = useState('');
-  const [formAmount, setFormAmount] = useState('');
-  const [formDpAmount, setFormDpAmount] = useState('');
-  const [formPaymentStatus, setFormPaymentStatus] = useState<'paid' | 'unpaid' | 'partial'>('paid');
-  const [formNotes, setFormNotes] = useState('');
-  
-  // Validation State
-  const [valError, setValError] = useState('');
-
   // Refresh categories from storage
   const handleCategoriesChanged = () => {
     setCustomCatVersion(prev => prev + 1);
   };
 
-  // Auto-set default category when form type changes
-  useEffect(() => {
-    if (showForm === 'income') {
-      const incCats = categoriesList.income;
-      setFormCategory(incCats[0] || 'Pembuatan Toko');
-      setFormPaymentStatus('paid');
-      setFormDpAmount('');
-    } else if (showForm === 'expense') {
-      const expCats = categoriesList.expense;
-      setFormCategory(expCats[0] || 'Operational');
-      setFormClientName('');
-      setFormPaymentStatus('paid');
-      setFormDpAmount('');
-    }
-  }, [showForm, categoriesList]);
-
-  // Set form states if we are EDITING
-  useEffect(() => {
-    if (editingTransaction) {
-      setShowForm(editingTransaction.type);
-      setFormDate(editingTransaction.date);
-      setFormCategory(editingTransaction.category);
-      setFormClientName(editingTransaction.client_name || '');
-      setFormAmount(String(editingTransaction.amount));
-      setFormDpAmount(editingTransaction.dp_amount ? String(editingTransaction.dp_amount) : '');
-      setFormPaymentStatus(editingTransaction.payment_status);
-      setFormNotes(editingTransaction.notes);
-    }
-  }, [editingTransaction]);
-
-  // Handle Cancel Form
-  const handleCancel = () => {
-    setShowForm(null);
-    setEditingTransaction(null);
-    setValError('');
-    // reset defaults
-    setFormDate(new Date().toISOString().split('T')[0]);
-    setFormClientName('');
-    setFormAmount('');
-    setFormDpAmount('');
-    setFormNotes('');
-  };
-
-  // Submit Form (Add or Edit)
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setValError('');
-
-    // Validation
-    if (!formDate) {
-      setValError('Tanggal transaksi wajib diisi');
-      return;
-    }
-    const numAmount = Number(formAmount.replace(/[^0-9.-]+/g, ""));
-    if (isNaN(numAmount) || numAmount <= 0) {
-      setValError('Jumlah nominal total harus berupa angka positif lebih besar dari 0');
-      return;
-    }
-
-    let numDpAmount = 0;
-    if (showForm === 'income' && formPaymentStatus === 'partial') {
-      numDpAmount = Number(formDpAmount.replace(/[^0-9.-]+/g, ""));
-      if (isNaN(numDpAmount) || numDpAmount <= 0) {
-        setValError('Nominal DP (Down Payment) harus berupa angka positif');
-        return;
-      }
-      if (numDpAmount >= numAmount) {
-        setValError('Nominal DP harus lebih kecil dari Total Deal (jika sudah lunas, pilih status "Lunas")');
-        return;
-      }
-    } else if (showForm === 'income' && formPaymentStatus === 'paid') {
-      numDpAmount = numAmount;
-    }
-
-    if (showForm === 'income' && !formClientName.trim()) {
-      setValError('Nama Klien / Project wajib diisi untuk transaksi masuk');
-      return;
-    }
-    if (!formCategory) {
-      setValError('Pilih kategori transaksi');
-      return;
-    }
-
-    const payload = {
-      date: formDate,
-      type: showForm as 'income' | 'expense',
-      category: formCategory,
-      client_name: showForm === 'income' ? formClientName.trim() : null,
-      amount: numAmount,
-      dp_amount: showForm === 'income' && formPaymentStatus === 'partial' ? numDpAmount : (formPaymentStatus === 'paid' ? numAmount : 0),
-      payment_status: showForm === 'income' ? formPaymentStatus : 'paid',
-      notes: formNotes.trim()
-    };
-
+  // Modal Submit Handler
+  const handleModalSubmit = (payload: {
+    date: string;
+    type: 'income' | 'expense';
+    category: string;
+    client_name: string | null;
+    amount: number;
+    dp_amount: number;
+    payment_status: 'paid' | 'unpaid' | 'partial';
+    notes: string;
+  }) => {
     if (editingTransaction) {
       onUpdateTransaction({
         ...editingTransaction,
@@ -183,9 +80,14 @@ export default function Transactions({
     } else {
       onAddTransaction(payload);
     }
+    setShowForm(null);
+    setEditingTransaction(null);
+  };
 
-    // Success and Reset
-    handleCancel();
+  // Modal Close Handler
+  const handleModalClose = () => {
+    setShowForm(null);
+    setEditingTransaction(null);
   };
 
   // Reset Filters
@@ -255,6 +157,17 @@ export default function Transactions({
         }}
       />
 
+      {/* Transaction Modal Pop-up */}
+      <TransactionModal
+        isOpen={Boolean(showForm || editingTransaction)}
+        initialType={editingTransaction ? editingTransaction.type : (showForm || 'income')}
+        onClose={handleModalClose}
+        onSubmit={handleModalSubmit}
+        editingTransaction={editingTransaction}
+        categoriesList={categoriesList}
+        onOpenCategoryManager={() => setIsCatModalOpen(true)}
+      />
+
       {/* Top Banner & Fast Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
         <div>
@@ -264,252 +177,33 @@ export default function Transactions({
           </p>
         </div>
         
-        {!showForm && (
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              onClick={() => setIsCatModalOpen(true)}
-              className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs px-3.5 py-2.5 rounded-xl transition-all cursor-pointer"
-              title="Kelola Kategori Kustom"
-            >
-              <Tag className="w-3.5 h-3.5 text-indigo-600" />
-              Kelola Kategori
-            </button>
-            <button
-              onClick={() => setShowForm('income')}
-              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-xs hover:shadow transition-all cursor-pointer"
-              id="btn-tambah-pemasukan"
-            >
-              <PlusCircle className="w-4 h-4" />
-              Pemasukan
-            </button>
-            <button
-              onClick={() => setShowForm('expense')}
-              className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-xs hover:shadow transition-all cursor-pointer"
-              id="btn-tambah-pengeluaran"
-            >
-              <PlusCircle className="w-4 h-4" />
-              Pengeluaran
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Transaction Form (Slide down / Open inline) */}
-      {showForm && (
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 shadow-xs animate-fade-in" id="transaction-form-panel">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-5">
-            <div className="flex items-center gap-2">
-              <span className={`p-2 rounded-lg ${showForm === 'income' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                {showForm === 'income' ? <ArrowUpCircle className="w-5 h-5" /> : <ArrowDownCircle className="w-5 h-5" />}
-              </span>
-              <h3 className="font-bold text-slate-800 text-lg">
-                {editingTransaction ? 'Edit Transaksi' : 'Catat Transaksi Baru'}{' '}
-                <span className={showForm === 'income' ? 'text-emerald-600' : 'text-rose-600'}>
-                  ({showForm === 'income' ? 'Pemasukan/Masuk' : 'Pengeluaran/Keluar'})
-                </span>
-              </h3>
-            </div>
-            <button
-              onClick={handleCancel}
-              className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {valError && (
-              <div className="flex items-center gap-2 bg-rose-50 text-rose-700 p-3 rounded-xl border border-rose-100 text-sm">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{valError}</span>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              
-              {/* Field: Tanggal */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Tanggal Transaksi</label>
-                <div className="relative">
-                  <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="date"
-                    required
-                    value={formDate}
-                    onChange={(e) => setFormDate(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Field: Kategori + Quick Manage Button */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Kategori</label>
-                  <button
-                    type="button"
-                    onClick={() => setIsCatModalOpen(true)}
-                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    + Kelola
-                  </button>
-                </div>
-                <div className="relative">
-                  <BookOpen className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <select
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm appearance-none cursor-pointer"
-                  >
-                    {showForm === 'income' 
-                      ? categoriesList.income.map(c => <option key={c} value={c}>{c}</option>)
-                      : categoriesList.expense.map(c => <option key={c} value={c}>{c}</option>)
-                    }
-                  </select>
-                </div>
-              </div>
-
-              {/* Field: Total Nominal (Rp) */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                  {showForm === 'income' ? 'Total Nilai Deal / Project (Rp)' : 'Nominal / Jumlah (Rp)'}
-                </label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="number"
-                    required
-                    placeholder="Contoh: 3000000"
-                    value={formAmount}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setFormAmount(val);
-                      // Auto calculate 50% DP default if DP empty
-                      if (showForm === 'income' && formPaymentStatus === 'partial' && (!formDpAmount || Number(formDpAmount) === Math.round(Number(formAmount) / 2))) {
-                        const num = Number(val);
-                        if (!isNaN(num) && num > 0) {
-                          setFormDpAmount(String(Math.round(num / 2)));
-                        }
-                      }
-                    }}
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-bold placeholder:font-normal focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Field: Klien (Pemasukan Only) */}
-              {showForm === 'income' && (
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Nama Klien / Project</label>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Masukkan nama klien atau instansi"
-                      value={formClientName}
-                      onChange={(e) => setFormClientName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Field: Status Pembayaran (Pemasukan Only) */}
-              {showForm === 'income' && (
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Status Pembayaran</label>
-                  <div className="relative">
-                    <CheckCircle className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <select
-                      value={formPaymentStatus}
-                      onChange={(e) => {
-                        const newStatus = e.target.value as any;
-                        setFormPaymentStatus(newStatus);
-                        if (newStatus === 'partial' && !formDpAmount) {
-                          const num = Number(formAmount);
-                          if (!isNaN(num) && num > 0) {
-                            setFormDpAmount(String(Math.round(num / 2)));
-                          }
-                        }
-                      }}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm appearance-none cursor-pointer"
-                    >
-                      <option value="paid">Lunas (100% Paid)</option>
-                      <option value="partial">Bayar Sebagian (DP)</option>
-                      <option value="unpaid">Belum Lunas (Unpaid / Piutang)</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              {/* Field: Nominal DP (Pemasukan with Status 'partial' Only) */}
-              {showForm === 'income' && formPaymentStatus === 'partial' && (
-                <div className="space-y-1.5 animate-fade-in">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-amber-600">Nominal DP Masuk (Rp)</label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
-                    <input
-                      type="number"
-                      required
-                      placeholder="Masukkan nominal DP yang dibayarkan"
-                      value={formDpAmount}
-                      onChange={(e) => setFormDpAmount(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-amber-50/50 border border-amber-300 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Field: Deskripsi / Catatan */}
-              <div className="space-y-1.5 lg:col-span-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Keterangan / Catatan Tambahan</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Tambahkan detail deskripsi transaksi ini..."
-                    value={formNotes}
-                    onChange={(e) => setFormNotes(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                  />
-                </div>
-              </div>
-
-            </div>
-
-            {/* Live Calculation Feedback for DP Partial Income */}
-            {showForm === 'income' && formPaymentStatus === 'partial' && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1 text-amber-900 animate-fade-in">
-                <div className="flex flex-wrap items-center justify-between gap-2 font-medium">
-                  <span>Pemasukan Kas Tercatat (DP): <strong className="text-emerald-700">{formatIDR(Number(formDpAmount) || 0)}</strong></span>
-                  <span>Sisa Piutang: <strong className="text-amber-700">{formatIDR(Math.max(0, (Number(formAmount) || 0) - (Number(formDpAmount) || 0)))}</strong></span>
-                </div>
-                <p className="text-[11px] text-amber-700">
-                  * Uang yang masuk ke catatan pemasukan kas hanya sebesar nominal DP. Sisa piutang dapat dilunasi kapan saja melalui tombol "Lunas".
-                </p>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-semibold text-sm transition-all cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="submit"
-                className={`px-5 py-2.5 rounded-xl font-bold text-sm text-white shadow-xs hover:shadow transition-all cursor-pointer ${
-                  showForm === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
-                }`}
-              >
-                {editingTransaction ? 'Simpan Perubahan' : 'Rekam Transaksi'}
-              </button>
-            </div>
-          </form>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => setIsCatModalOpen(true)}
+            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs px-3.5 py-2.5 rounded-xl transition-all cursor-pointer"
+            title="Kelola Kategori Kustom"
+          >
+            <Tag className="w-3.5 h-3.5 text-indigo-600" />
+            Kelola Kategori
+          </button>
+          <button
+            onClick={() => setShowForm('income')}
+            className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-sm px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
+            id="btn-tambah-pemasukan"
+          >
+            <PlusCircle className="w-4 h-4" />
+            Pemasukan
+          </button>
+          <button
+            onClick={() => setShowForm('expense')}
+            className="flex items-center gap-2 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white font-bold text-sm px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
+            id="btn-tambah-pengeluaran"
+          >
+            <PlusCircle className="w-4 h-4" />
+            Pengeluaran
+          </button>
         </div>
-      )}
+      </div>
 
       {/* Advanced Filters & Search Section */}
       <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs space-y-4">
