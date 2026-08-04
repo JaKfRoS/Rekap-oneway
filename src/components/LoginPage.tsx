@@ -123,9 +123,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           <div>
             <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
               KASUSAHA
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-extrabold px-2 py-0.5 rounded-full border border-emerald-500/30">v2.5</span>
             </h1>
-            <p className="text-[11px] text-slate-400">Aplikasi Pembukuan Keuangan Usaha Multi-User</p>
+            <p className="text-[11px] text-slate-400">Aplikasi pembukuan usaha sederhana</p>
           </div>
         </div>
 

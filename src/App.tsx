@@ -352,7 +352,7 @@ export default function App() {
               </div>
               <div>
                 <span className="block font-black text-slate-900 leading-none text-base tracking-tight">KASUSAHA</span>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Aplikasi Pembukuan Sederhana</span>
+                <p className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Aplikasi pembukuan usaha sederhana</p>
               </div>
             </div>
 
