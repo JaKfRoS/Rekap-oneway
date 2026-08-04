@@ -24,6 +24,8 @@ interface TransactionsProps {
   editingTransaction: Transaction | null;
   setEditingTransaction: (tx: Transaction | null) => void;
   userId?: string;
+  autoOpenType?: 'income' | 'expense' | null;
+  onCloseAutoOpen?: () => void;
 }
 
 export default function Transactions({
@@ -33,10 +35,20 @@ export default function Transactions({
   onDeleteTransaction,
   editingTransaction,
   setEditingTransaction,
-  userId
+  userId,
+  autoOpenType,
+  onCloseAutoOpen
 }: TransactionsProps) {
   // Modal / Form Toggle State
   const [showForm, setShowForm] = useState<'income' | 'expense' | null>(null);
+
+  // Trigger modal when autoOpenType is set from parent (e.g. mobile bottom bar + Catat button)
+  React.useEffect(() => {
+    if (autoOpenType) {
+      setShowForm(autoOpenType);
+      if (onCloseAutoOpen) onCloseAutoOpen();
+    }
+  }, [autoOpenType, onCloseAutoOpen]);
 
   // Custom Categories state & version trigger
   const [customCatVersion, setCustomCatVersion] = useState(0);

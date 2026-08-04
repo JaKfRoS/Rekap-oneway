@@ -56,6 +56,9 @@ export default function App() {
   // Mobile menu open state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Quick action trigger for modal pop-up from mobile bottom nav bar
+  const [autoOpenType, setAutoOpenType] = useState<'income' | 'expense' | null>(null);
+
   // Edit Transaction state mapping across sections
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
@@ -586,7 +589,7 @@ export default function App() {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-28 md:pb-8">
         
         {/* Error Notification Toast/Banner */}
         {errorMsg && (
@@ -629,6 +632,8 @@ export default function App() {
               editingTransaction={editingTransaction}
               setEditingTransaction={setEditingTransaction}
               userId={currentUser?.id}
+              autoOpenType={autoOpenType}
+              onCloseAutoOpen={() => setAutoOpenType(null)}
             />
           )}
 
@@ -639,6 +644,86 @@ export default function App() {
         </div>
 
       </main>
+
+      {/* Mobile Bottom Navigation Bar (Optimized for One-Hand Mobile Thumb Navigation) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-2xl px-3 py-2 flex items-center justify-around no-print">
+        {/* Item 1: Dasbor */}
+        <button
+          onClick={() => {
+            setActiveTab('dashboard');
+            setMobileMenuOpen(false);
+          }}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'dashboard' 
+              ? 'text-indigo-600 font-extrabold scale-105' 
+              : 'text-slate-400 hover:text-slate-600 font-medium'
+          }`}
+        >
+          <LayoutDashboard className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px] tracking-tight">Dasbor</span>
+        </button>
+
+        {/* Item 2: Transaksi */}
+        <button
+          onClick={() => {
+            setActiveTab('transactions');
+            setMobileMenuOpen(false);
+          }}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'transactions' 
+              ? 'text-indigo-600 font-extrabold scale-105' 
+              : 'text-slate-400 hover:text-slate-600 font-medium'
+          }`}
+        >
+          <Receipt className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px] tracking-tight">Transaksi</span>
+        </button>
+
+        {/* Center Prominent Quick Add FAB: + Catat */}
+        <button
+          onClick={() => {
+            setActiveTab('transactions');
+            setAutoOpenType('income');
+            setMobileMenuOpen(false);
+          }}
+          className="flex flex-col items-center justify-center -mt-6 cursor-pointer group"
+          title="Catat Transaksi Baru"
+        >
+          <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-lg shadow-emerald-600/30 group-active:scale-95 transition-all ring-4 ring-white">
+            <PlusCircle className="w-7 h-7" />
+          </div>
+          <span className="text-[10px] font-extrabold text-emerald-700 mt-0.5">+ Catat</span>
+        </button>
+
+        {/* Item 3: Laporan */}
+        <button
+          onClick={() => {
+            setActiveTab('reports');
+            setMobileMenuOpen(false);
+          }}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'reports' 
+              ? 'text-indigo-600 font-extrabold scale-105' 
+              : 'text-slate-400 hover:text-slate-600 font-medium'
+          }`}
+        >
+          <FilePieChart className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px] tracking-tight">Laporan</span>
+        </button>
+
+        {/* Item 4: Menu */}
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            mobileMenuOpen 
+              ? 'text-indigo-600 font-extrabold scale-105' 
+              : 'text-slate-400 hover:text-slate-600 font-medium'
+          }`}
+        >
+          <Menu className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px] tracking-tight">Menu</span>
+        </button>
+      </nav>
 
       {/* Auth Modal & SQL Guide Modal */}
       <AuthModal 
