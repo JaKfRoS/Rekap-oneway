@@ -14,7 +14,8 @@ import {
   LogIn,
   LogOut,
   Database,
-  Sparkles
+  Sparkles,
+  PlusCircle
 } from 'lucide-react';
 import { Transaction } from './utils/dummyData';
 import { 
