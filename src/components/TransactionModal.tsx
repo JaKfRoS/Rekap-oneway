@@ -159,20 +159,20 @@ export default function TransactionModal({
 
   return (
     <div 
-      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-fade-in"
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 animate-fade-in"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div 
-        className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-100 relative my-8 overflow-hidden text-slate-800 animate-scale-up"
+        className="bg-white rounded-3xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-100 relative overflow-hidden text-slate-800 animate-scale-up"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className={`p-6 sm:px-8 sm:pt-8 sm:pb-6 ${isIncome ? 'bg-emerald-50/70 border-b border-emerald-100' : 'bg-rose-50/70 border-b border-rose-100'}`}>
+        <div className={`p-5 sm:px-8 sm:pt-6 sm:pb-5 shrink-0 ${isIncome ? 'bg-emerald-50/70 border-b border-emerald-100' : 'bg-rose-50/70 border-b border-rose-100'}`}>
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-md ${
+              <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-white shadow-md ${
                 isIncome 
                   ? 'bg-gradient-to-tr from-emerald-600 to-teal-500 shadow-emerald-500/20' 
                   : 'bg-gradient-to-tr from-rose-600 to-pink-500 shadow-rose-500/20'
@@ -180,12 +180,12 @@ export default function TransactionModal({
                 {isIncome ? <ArrowUpCircle className="w-6 h-6" /> : <ArrowDownCircle className="w-6 h-6" />}
               </div>
               <div>
-                <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider mb-1 ${
+                <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider mb-0.5 ${
                   isIncome ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                 }`}>
                   {editingTransaction ? 'Mode Edit' : 'Catat Transaksi'}
                 </span>
-                <h3 className="text-xl font-bold text-slate-900">
+                <h3 className="text-lg sm:text-xl font-bold text-slate-900">
                   {editingTransaction ? 'Edit Data Transaksi' : (isIncome ? 'Tambah Pemasukan Kas' : 'Tambah Pengeluaran Kas')}
                 </h3>
               </div>
@@ -203,11 +203,11 @@ export default function TransactionModal({
 
           {/* Type Selector Tabs (Only if creating new transaction) */}
           {!editingTransaction && (
-            <div className="mt-5 p-1 bg-white/80 backdrop-blur-xs rounded-2xl border border-slate-200/80 flex gap-1">
+            <div className="mt-4 p-1 bg-white/80 backdrop-blur-xs rounded-2xl border border-slate-200/80 flex gap-1">
               <button
                 type="button"
                 onClick={() => handleTypeChange('income')}
-                className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                className={`flex-1 py-2 px-3 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                   isIncome 
                     ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20' 
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/50'
@@ -219,7 +219,7 @@ export default function TransactionModal({
               <button
                 type="button"
                 onClick={() => handleTypeChange('expense')}
-                className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                className={`flex-1 py-2 px-3 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                   !isIncome 
                     ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20' 
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/50'
@@ -232,200 +232,203 @@ export default function TransactionModal({
           )}
         </div>
 
-        {/* Modal Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-5">
-          {/* Validation Error Alert */}
-          {valError && (
-            <div className="flex items-center gap-2.5 bg-rose-50 text-rose-700 p-3.5 rounded-2xl border border-rose-200 text-xs font-medium animate-shake">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-              <span>{valError}</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            
-            {/* Field 1: Tanggal Transaksi */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                Tanggal Transaksi
-              </label>
-              <div className="relative">
-                <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="date"
-                  required
-                  value={formDate}
-                  onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm transition-all"
-                />
+        {/* Modal Form Container */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          {/* Scrollable Form Body */}
+          <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-4">
+            {/* Validation Error Alert */}
+            {valError && (
+              <div className="flex items-center gap-2.5 bg-rose-50 text-rose-700 p-3.5 rounded-2xl border border-rose-200 text-xs font-medium animate-shake">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{valError}</span>
               </div>
-            </div>
+            )}
 
-            {/* Field 2: Kategori */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              
+              {/* Field 1: Tanggal Transaksi */}
+              <div className="space-y-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Kategori
+                  Tanggal Transaksi
                 </label>
-                <button
-                  type="button"
-                  onClick={onOpenCategoryManager}
-                  className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <Tag className="w-3 h-3" />
-                  + Kelola
-                </button>
+                <div className="relative">
+                  <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="date"
+                    required
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm transition-all"
+                  />
+                </div>
               </div>
-              <div className="relative">
-                <BookOpen className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <select
-                  value={formCategory}
-                  onChange={(e) => setFormCategory(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm appearance-none cursor-pointer transition-all"
-                >
-                  {isIncome 
-                    ? categoriesList.income.map(c => <option key={c} value={c}>{c}</option>)
-                    : categoriesList.expense.map(c => <option key={c} value={c}>{c}</option>)
-                  }
-                </select>
-              </div>
-            </div>
 
-            {/* Field 3: Nominal / Total Deal */}
-            <div className={`space-y-1.5 ${isIncome ? 'sm:col-span-2' : 'sm:col-span-2'}`}>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                {isIncome ? 'Total Nilai Deal / Project (Rp)' : 'Nominal Pengeluaran (Rp)'}
-              </label>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">Rp</span>
-                <input
-                  type="number"
-                  required
-                  placeholder="Contoh: 1500000"
-                  value={formAmount}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setFormAmount(val);
-                    if (isIncome && formPaymentStatus === 'partial' && (!formDpAmount || Number(formDpAmount) === Math.round(Number(formAmount) / 2))) {
-                      const num = Number(val);
-                      if (!isNaN(num) && num > 0) {
-                        setFormDpAmount(String(Math.round(num / 2)));
-                      }
+              {/* Field 2: Kategori */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Kategori
+                  </label>
+                  <button
+                    type="button"
+                    onClick={onOpenCategoryManager}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Tag className="w-3 h-3" />
+                    + Kelola
+                  </button>
+                </div>
+                <div className="relative">
+                  <BookOpen className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <select
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm appearance-none cursor-pointer transition-all"
+                  >
+                    {isIncome 
+                      ? categoriesList.income.map(c => <option key={c} value={c}>{c}</option>)
+                      : categoriesList.expense.map(c => <option key={c} value={c}>{c}</option>)
                     }
-                  }}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-base transition-all"
-                />
+                  </select>
+                </div>
               </div>
-            </div>
 
-            {/* Income Specific Fields */}
-            {isIncome && (
-              <>
-                {/* Field 4: Nama Klien / Project */}
-                <div className="space-y-1.5 sm:col-span-2">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Nama Klien / Instansi / Project
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Masukkan nama klien atau instansi"
-                      value={formClientName}
-                      onChange={(e) => setFormClientName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Field 5: Status Pembayaran */}
-                <div className="space-y-1.5 sm:col-span-2">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Status Pembayaran
-                  </label>
-                  <div className="relative">
-                    <CheckCircle className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <select
-                      value={formPaymentStatus}
-                      onChange={(e) => {
-                        const newStatus = e.target.value as any;
-                        setFormPaymentStatus(newStatus);
-                        if (newStatus === 'partial' && !formDpAmount) {
-                          const num = Number(formAmount);
-                          if (!isNaN(num) && num > 0) {
-                            setFormDpAmount(String(Math.round(num / 2)));
-                          }
+              {/* Field 3: Nominal / Total Deal */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  {isIncome ? 'Total Nilai Deal / Project (Rp)' : 'Nominal Pengeluaran (Rp)'}
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">Rp</span>
+                  <input
+                    type="number"
+                    required
+                    placeholder="Contoh: 1500000"
+                    value={formAmount}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormAmount(val);
+                      if (isIncome && formPaymentStatus === 'partial' && (!formDpAmount || Number(formDpAmount) === Math.round(Number(formAmount) / 2))) {
+                        const num = Number(val);
+                        if (!isNaN(num) && num > 0) {
+                          setFormDpAmount(String(Math.round(num / 2)));
                         }
-                      }}
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm appearance-none cursor-pointer transition-all"
-                    >
-                      <option value="paid">Lunas (100% Paid)</option>
-                      <option value="partial">Bayar Sebagian (DP / Down Payment)</option>
-                      <option value="unpaid">Belum Lunas (Unpaid / Piutang)</option>
-                    </select>
-                  </div>
+                      }
+                    }}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-base transition-all"
+                  />
                 </div>
+              </div>
 
-                {/* Field 6: Nominal DP (If status == partial) */}
-                {formPaymentStatus === 'partial' && (
-                  <div className="space-y-1.5 sm:col-span-2 animate-fade-in">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-amber-600">
-                      Nominal DP Masuk Sekarang (Rp)
+              {/* Income Specific Fields */}
+              {isIncome && (
+                <>
+                  {/* Field 4: Nama Klien / Project */}
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Nama Klien / Instansi / Project
                     </label>
                     <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-amber-500 text-sm">Rp</span>
+                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                       <input
-                        type="number"
-                        required
-                        placeholder="Masukkan nominal DP"
-                        value={formDpAmount}
-                        onChange={(e) => setFormDpAmount(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 bg-amber-50/60 border border-amber-300 rounded-xl text-slate-900 font-bold focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none text-sm transition-all"
+                        type="text"
+                        placeholder="Masukkan nama klien atau instansi"
+                        value={formClientName}
+                        onChange={(e) => setFormClientName(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm transition-all"
                       />
                     </div>
                   </div>
-                )}
-              </>
-            )}
 
-            {/* Field 7: Keterangan / Catatan */}
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                Keterangan / Catatan Tambahan
-              </label>
-              <div className="relative">
-                <FileText className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
-                <textarea
-                  rows={2}
-                  placeholder="Tambahkan rincian atau keterangan transaksi ini..."
-                  value={formNotes}
-                  onChange={(e) => setFormNotes(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm resize-none transition-all"
-                />
+                  {/* Field 5: Status Pembayaran */}
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Status Pembayaran
+                    </label>
+                    <div className="relative">
+                      <CheckCircle className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <select
+                        value={formPaymentStatus}
+                        onChange={(e) => {
+                          const newStatus = e.target.value as any;
+                          setFormPaymentStatus(newStatus);
+                          if (newStatus === 'partial' && !formDpAmount) {
+                            const num = Number(formAmount);
+                            if (!isNaN(num) && num > 0) {
+                              setFormDpAmount(String(Math.round(num / 2)));
+                            }
+                          }
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm appearance-none cursor-pointer transition-all"
+                      >
+                        <option value="paid">Lunas (100% Paid)</option>
+                        <option value="partial">Bayar Sebagian (DP / Down Payment)</option>
+                        <option value="unpaid">Belum Lunas (Unpaid / Piutang)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Field 6: Nominal DP (If status == partial) */}
+                  {formPaymentStatus === 'partial' && (
+                    <div className="space-y-1.5 sm:col-span-2 animate-fade-in">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-amber-600">
+                        Nominal DP Masuk Sekarang (Rp)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-amber-500 text-sm">Rp</span>
+                        <input
+                          type="number"
+                          required
+                          placeholder="Masukkan nominal DP"
+                          value={formDpAmount}
+                          onChange={(e) => setFormDpAmount(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-amber-50/60 border border-amber-300 rounded-xl text-slate-900 font-bold focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none text-sm transition-all"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Field 7: Keterangan / Catatan */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Keterangan / Catatan Tambahan
+                </label>
+                <div className="relative">
+                  <FileText className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                  <textarea
+                    rows={2}
+                    placeholder="Tambahkan rincian atau keterangan transaksi ini..."
+                    value={formNotes}
+                    onChange={(e) => setFormNotes(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm resize-none transition-all"
+                  />
+                </div>
               </div>
+
             </div>
 
+            {/* Live DP Calculation Card */}
+            {isIncome && formPaymentStatus === 'partial' && (
+              <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl text-xs space-y-1 text-amber-900 animate-fade-in shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2 font-bold text-xs">
+                  <span>Kas Masuk (DP): <strong className="text-emerald-700 text-sm">{formatIDR(Number(formDpAmount) || 0)}</strong></span>
+                  <span>Sisa Piutang: <strong className="text-amber-700 text-sm">{formatIDR(Math.max(0, (Number(formAmount) || 0) - (Number(formDpAmount) || 0)))}</strong></span>
+                </div>
+                <p className="text-[11px] text-amber-700/80 mt-1">
+                  * Kas tercatat sebesar nominal DP. Piutang dapat dilunasi kapan saja melalui tombol "Pelunasan".
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* Live DP Calculation Card */}
-          {isIncome && formPaymentStatus === 'partial' && (
-            <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl text-xs space-y-1 text-amber-900 animate-fade-in shadow-xs">
-              <div className="flex flex-wrap items-center justify-between gap-2 font-bold text-xs">
-                <span>Kas Masuk (DP): <strong className="text-emerald-700 text-sm">{formatIDR(Number(formDpAmount) || 0)}</strong></span>
-                <span>Sisa Piutang: <strong className="text-amber-700 text-sm">{formatIDR(Math.max(0, (Number(formAmount) || 0) - (Number(formDpAmount) || 0)))}</strong></span>
-              </div>
-              <p className="text-[11px] text-amber-700/80 mt-1">
-                * Kas tercatat sebesar nominal DP. Piutang dapat dilunasi kapan saja melalui tombol "Pelunasan".
-              </p>
-            </div>
-          )}
-
-          {/* Action Footer Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+          {/* Fixed Action Footer Buttons */}
+          <div className="shrink-0 p-4 sm:px-7 sm:py-4 bg-slate-50/90 border-t border-slate-100 flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-semibold text-sm transition-all cursor-pointer"
+              className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-200/70 font-semibold text-sm transition-all cursor-pointer"
             >
               Batal
             </button>
