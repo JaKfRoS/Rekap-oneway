@@ -63,13 +63,20 @@ export default function App() {
   // Edit Transaction state mapping across sections
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
-  // Ref guard to prevent overlapping loadData calls
+  // Ref guard to prevent overlapping loadData calls and stale closures
   const isFetchingRef = useRef<boolean>(false);
+  const currentUserRef = useRef<any>(currentUser);
+  const isDemoModeRef = useRef<boolean>(isDemoMode);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+    isDemoModeRef.current = isDemoMode;
+  }, [currentUser, isDemoMode]);
 
   // Fetch transactions on load and whenever config changes
   const loadData = async (demoOverride?: boolean, userOverride?: any, force: boolean = false, silent: boolean = false) => {
-    const activeDemo = demoOverride !== undefined ? demoOverride : isDemoMode;
-    const activeUser = userOverride !== undefined ? userOverride : currentUser;
+    const activeDemo = demoOverride !== undefined ? demoOverride : isDemoModeRef.current;
+    const activeUser = userOverride !== undefined ? userOverride : currentUserRef.current;
 
     if (isFetchingRef.current && !force) return;
     isFetchingRef.current = true;
@@ -114,35 +121,38 @@ export default function App() {
       supabase.auth.getSession().then(({ data: { session } }) => {
         const user = session?.user ?? null;
         setCurrentUser(user);
+        currentUserRef.current = user;
         setIsAuthChecking(false);
         clearTimeout(authFallbackTimeout);
         loadData(false, user);
       }).catch(() => {
         setIsAuthChecking(false);
         clearTimeout(authFallbackTimeout);
-        loadData(isDemoMode, currentUser);
+        loadData(isDemoModeRef.current, currentUserRef.current);
       });
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         const user = session?.user ?? null;
         setCurrentUser(user);
+        currentUserRef.current = user;
         setTransactions([]);
         if (user) {
           setIsDemoMode(false);
+          isDemoModeRef.current = false;
         }
         setIsAuthChecking(false);
         clearTimeout(authFallbackTimeout);
-        loadData(user ? false : isDemoMode, user, true);
+        loadData(user ? false : isDemoModeRef.current, user, true);
       });
       authListener = subscription;
     } else {
       setIsAuthChecking(false);
       clearTimeout(authFallbackTimeout);
-      loadData(isDemoMode, currentUser);
+      loadData(isDemoModeRef.current, currentUserRef.current);
     }
 
     // Re-fetch data automatically when user switches back to this tab or comes online
-    const handleFocus = () => loadData(undefined, undefined, false, true);
+    const handleFocus = () => loadData(isDemoModeRef.current, currentUserRef.current, false, true);
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', handleFocus);
 
@@ -153,7 +163,7 @@ export default function App() {
         channel = supabase
           .channel('db-realtime-sync')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
-            loadData(undefined, undefined, true, true);
+            loadData(isDemoModeRef.current, currentUserRef.current, true, true);
           })
           .subscribe();
       } catch (e) {

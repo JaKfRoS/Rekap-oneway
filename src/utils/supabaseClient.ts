@@ -311,14 +311,18 @@ export async function getTransactions(
   // 2. If no user is logged in, use local guest storage
   if (!userId) {
     const guestData = getLocalUserTransactions('guest');
-    return { data: guestData, source: 'local' };
+    const guestDeleted = getDeletedUserTransactionIds('guest');
+    const filteredGuest = guestData.filter(t => !guestDeleted.has(t.id));
+    return { data: filteredGuest, source: 'local' };
   }
 
+  const deletedIds = getDeletedUserTransactionIds(userId);
   const supabase = getSupabaseClient();
   
   if (!supabase) {
     const localData = getLocalUserTransactions(userId);
-    return { data: localData, source: 'local', error: 'Database Supabase tidak terhubung. Menggunakan data simpanan lokal.' };
+    const filteredLocal = localData.filter(t => !deletedIds.has(t.id));
+    return { data: filteredLocal, source: 'local', error: 'Database Supabase tidak terhubung. Menggunakan data simpanan lokal.' };
   }
 
   try {
@@ -346,7 +350,8 @@ export async function getTransactions(
           item.id === CONFIG_CATEGORY_ROW_ID ||
           item.id?.startsWith(CONFIG_CATEGORY_ROW_ID) ||
           item.category === '__SYSTEM_CATEGORIES_CONFIG__' ||
-          item.client_name === '__SYSTEM_CATEGORIES_CONFIG__'
+          item.client_name === '__SYSTEM_CATEGORIES_CONFIG__' ||
+          (item.id && deletedIds.has(item.id))
         ) {
           return false;
         }
@@ -355,21 +360,23 @@ export async function getTransactions(
 
       const localMap = new Map<string, number | null>();
 
-      const mappedData: Transaction[] = actualDbRows.map((item: any) => {
-        const { dpAmount, cleanNotes } = parseDpAmountFromItem(item, localMap);
-        return {
-          id: item.id || crypto.randomUUID(),
-          created_at: item.created_at || new Date().toISOString(),
-          date: item.date || new Date().toISOString().split('T')[0],
-          type: (item.type === 'expense' ? 'expense' : 'income') as 'income' | 'expense',
-          category: item.category || 'Lain-lain',
-          client_name: item.client_name || '',
-          amount: Number(item.amount) || 0,
-          dp_amount: dpAmount,
-          payment_status: (item.payment_status || 'paid') as 'paid' | 'unpaid' | 'partial',
-          notes: cleanNotes || ''
-        };
-      });
+      const mappedData: Transaction[] = actualDbRows
+        .map((item: any) => {
+          const { dpAmount, cleanNotes } = parseDpAmountFromItem(item, localMap);
+          return {
+            id: item.id || crypto.randomUUID(),
+            created_at: item.created_at || new Date().toISOString(),
+            date: item.date || new Date().toISOString().split('T')[0],
+            type: (item.type === 'expense' ? 'expense' : 'income') as 'income' | 'expense',
+            category: item.category || 'Lain-lain',
+            client_name: item.client_name || '',
+            amount: Number(item.amount) || 0,
+            dp_amount: dpAmount,
+            payment_status: (item.payment_status || 'paid') as 'paid' | 'unpaid' | 'partial',
+            notes: cleanNotes || ''
+          };
+        })
+        .filter(t => !deletedIds.has(t.id));
 
       // Update user-specific local cache for offline viewing
       setLocalUserTransactions(userId, mappedData);
@@ -378,14 +385,16 @@ export async function getTransactions(
   } catch (err: any) {
     console.warn("Gagal menarik data dari Supabase cloud (menggunakan cache lokal):", err);
     const userLocal = getLocalUserTransactions(userId);
+    const filteredLocal = userLocal.filter(t => !deletedIds.has(t.id));
     return { 
-      data: userLocal, 
+      data: filteredLocal, 
       source: 'local'
     };
   }
 
   const userLocal = getLocalUserTransactions(userId);
-  return { data: userLocal, source: 'local' };
+  const filteredLocal = userLocal.filter(t => !deletedIds.has(t.id));
+  return { data: filteredLocal, source: 'local' };
 }
 
 export async function addTransaction(
@@ -411,6 +420,10 @@ export async function addTransaction(
   }
 
   const activeUserId = userId || 'guest';
+
+  // Unmark as deleted if it was previously recorded
+  removeDeletedUserTransactionId(activeUserId, id);
+  removeDeletedUserTransactionId('guest', id);
 
   // Save to user-specific local cache
   const localTx = getLocalUserTransactions(activeUserId);
@@ -491,6 +504,10 @@ export async function updateTransaction(
 
   const activeUserId = userId || 'guest';
 
+  // Unmark as deleted if it was previously recorded
+  removeDeletedUserTransactionId(activeUserId, transaction.id);
+  removeDeletedUserTransactionId('guest', transaction.id);
+
   // Update user-specific local cache
   const localTx = getLocalUserTransactions(activeUserId);
   const updatedLocal = localTx.map(item => item.id === transaction.id ? transaction : item);
@@ -570,10 +587,22 @@ export async function deleteTransaction(
 
   const activeUserId = userId || 'guest';
 
+  // Record deleted ID in local tracking
+  addDeletedUserTransactionId(activeUserId, id);
+  if (userId) {
+    addDeletedUserTransactionId('guest', id);
+  }
+
   // Remove from user-specific local cache
   const localTx = getLocalUserTransactions(activeUserId);
   const updatedLocal = localTx.filter(item => item.id !== id);
   setLocalUserTransactions(activeUserId, updatedLocal);
+
+  // Also purge from guest cache if present
+  const guestTx = getLocalUserTransactions('guest');
+  if (guestTx.some(item => item.id === id)) {
+    setLocalUserTransactions('guest', guestTx.filter(item => item.id !== id));
+  }
 
   const supabase = getSupabaseClient();
   if (!supabase) {
