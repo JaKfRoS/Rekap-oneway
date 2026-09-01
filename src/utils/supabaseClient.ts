@@ -1,26 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { Transaction, INITIAL_TRANSACTIONS } from './dummyData';
-import { DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, CATEGORIES_STORAGE_KEY } from './categories';
-
-const STORAGE_KEY = 'pembukuan_transactions';
-const CONFIG_KEY = 'pembukuan_supabase_config';
+import { DEFAULT_INCOME_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES } from './categories';
 
 const HARDCODED_URL = 'https://ohhjcqihrjmewfbymhar.supabase.co';
 const HARDCODED_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oaGpjcWlocmptZXdmYnltaGFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2MTU0MjcsImV4cCI6MjEwMDE5MTQyN30.DmvCcF9w7fArZojyY8Xczzs4Ji4RyPv08fQJBEH-REc';
-
-export interface SupabaseConfig {
-  url: string;
-  anonKey: string;
-  isEnabled: boolean;
-}
-
-export function getSupabaseConfig(): SupabaseConfig {
-  return { url: HARDCODED_URL, anonKey: HARDCODED_KEY, isEnabled: true };
-}
-
-export function saveSupabaseConfig(config: SupabaseConfig) {
-  // No-op because it is hardcoded as requested
-}
 
 let supabaseInstance: any = null;
 
@@ -40,10 +23,6 @@ export function getSupabaseClient() {
     }
   }
   return supabaseInstance;
-}
-
-function getPastOrCurrentConfig(): SupabaseConfig | null {
-  return { url: HARDCODED_URL, anonKey: HARDCODED_KEY, isEnabled: true };
 }
 
 export const CONFIG_CATEGORY_ROW_ID = '00000000-0000-0000-0000-000000000000';

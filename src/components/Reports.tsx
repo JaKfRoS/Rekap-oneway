@@ -206,19 +206,21 @@ export default function Reports({ transactions }: ReportsProps) {
       'Catatan/Keterangan'
     ];
 
+    const csvField = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+
     const rows = filteredTransactions.map(t => [
-      t.id,
-      t.date,
-      t.type === 'income' ? 'Masuk' : 'Keluar',
-      t.category,
-      t.client_name || '-',
-      t.amount,
-      t.type === 'income' ? (t.payment_status === 'paid' ? 'Lunas' : t.payment_status === 'partial' ? 'DP' : 'Belum Lunas') : '-',
-      `"${(t.notes || '').replace(/"/g, '""')}"`
+      csvField(t.id),
+      csvField(t.date),
+      csvField(t.type === 'income' ? 'Masuk' : 'Keluar'),
+      csvField(t.category),
+      csvField(t.client_name || '-'),
+      csvField(t.amount),
+      csvField(t.type === 'income' ? (t.payment_status === 'paid' ? 'Lunas' : t.payment_status === 'partial' ? 'DP' : 'Belum Lunas') : '-'),
+      csvField(t.notes || '')
     ]);
 
     // Construct CSV String
-    const csvContent = 
+    const csvContent =
       "\uFEFF" + // UTF-8 BOM to open correctly in Excel
       [headers.join(';'), ...rows.map(e => e.join(';'))].join('\n');
 
@@ -389,7 +391,7 @@ export default function Reports({ transactions }: ReportsProps) {
               <p className="text-xs font-bold text-slate-500 tracking-wider mt-0.5">Ikhtisar Pendapatan & Kas Masuk/Keluar</p>
             </div>
             <div className="text-left sm:text-right mt-2 sm:mt-0 text-xs text-slate-500 space-y-0.5">
-              <p><strong>Dicetak pada:</strong> {formatLongDate('2026-07-21')}</p>
+              <p><strong>Dicetak pada:</strong> {formatLongDate(new Date().toISOString().split('T')[0])}</p>
               <p>
                 <strong>Periode:</strong>{' '}
                 {startDate && endDate 
