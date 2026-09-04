@@ -508,10 +508,20 @@ export default function App() {
         </div>
       </header>
 
-      {/* Mobile Drawer Navigation Panel */}
+      {/* Mobile Drawer Navigation Panel: rendered as a fixed overlay (not inline in
+          the document flow) so it always appears over the current viewport, even
+          when the page is scrolled down (e.g. opened from the bottom nav bar). */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-white border-b border-slate-200 shadow-md p-4 space-y-3 no-print animate-fade-in">
-          
+        <div className="md:hidden fixed inset-0 z-50 no-print animate-fade-in">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+
+          {/* Sheet Panel */}
+          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl p-4 space-y-3 max-h-[85vh] overflow-y-auto animate-scale-up">
+
           {/* Quick Stats Grid in Mobile Drawer */}
           <div className="grid grid-cols-3 gap-2 pb-4 border-b border-slate-100 text-center">
             <div className="p-2 bg-emerald-50 rounded-lg">
@@ -603,6 +613,7 @@ export default function App() {
                 <span>Masuk / Daftar Akun</span>
               </button>
             )}
+          </div>
           </div>
         </div>
       )}
