@@ -7,14 +7,11 @@ import {
   TrendingDown,
   Scale,
   RefreshCw,
-  Wallet,
   Menu,
   X,
   UserCheck,
   LogIn,
   LogOut,
-  Database,
-  Sparkles,
   PlusCircle
 } from 'lucide-react';
 import { Transaction } from './utils/dummyData';
@@ -156,21 +153,6 @@ export default function App() {
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', handleFocus);
 
-    // Attach Realtime Supabase Subscription if connected
-    let channel: any = null;
-    if (supabase) {
-      try {
-        channel = supabase
-          .channel('db-realtime-sync')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
-            loadData(isDemoModeRef.current, currentUserRef.current, true, true);
-          })
-          .subscribe();
-      } catch (e) {
-        console.warn("Realtime subscription notice:", e);
-      }
-    }
-
     // Ensure favicon is applied and updated in browser tab using SVG
     try {
       const existingFavicons = document.querySelectorAll("link[rel*='icon']");
@@ -197,11 +179,37 @@ export default function App() {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleFocus);
       if (authListener) authListener.unsubscribe();
-      if (channel && supabase) {
-        supabase.removeChannel(channel);
-      }
     };
   }, []);
+
+  // Realtime Supabase Subscription, scoped to the logged-in user's own rows only.
+  // Re-subscribes on login/logout so we never listen to other users' data or
+  // keep a stale connection open in demo mode.
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase || !currentUser?.id) return;
+
+    let channel: any = null;
+    try {
+      channel = supabase
+        .channel(`db-realtime-sync-${currentUser.id}`)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'transactions',
+          filter: `user_id=eq.${currentUser.id}`
+        }, () => {
+          loadData(false, currentUser, true, true);
+        })
+        .subscribe();
+    } catch (e) {
+      console.warn("Realtime subscription notice:", e);
+    }
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [currentUser?.id]);
 
   const handleLogout = async () => {
     const supabase = getSupabaseClient();

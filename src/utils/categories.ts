@@ -31,8 +31,6 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   'Pengeluaran Lain-lain'
 ];
 
-export const LEGACY_CATEGORIES: string[] = [];
-
 export function getCategoryStorageKey(userId?: string): string {
   return userId ? `pembukuan_categories_${userId}` : CATEGORIES_STORAGE_KEY;
 }
