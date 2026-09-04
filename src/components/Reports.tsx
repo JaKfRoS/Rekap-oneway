@@ -353,11 +353,11 @@ export default function Reports({ transactions }: ReportsProps) {
         )}
 
         {/* Action triggers */}
-        <div className="flex flex-wrap items-center gap-3 pt-2">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 pt-2">
           <button
             onClick={handlePrint}
             disabled={filteredTransactions.length === 0}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-50"
           >
             <Printer className="w-4 h-4" />
             Cetak Laporan / PDF
@@ -365,13 +365,13 @@ export default function Reports({ transactions }: ReportsProps) {
           <button
             onClick={handleExportCSV}
             disabled={filteredTransactions.length === 0}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
             Unduh Excel / CSV
           </button>
-          
-          <div className="text-xs text-slate-400 ml-auto w-full lg:w-auto text-center lg:text-right mt-1 lg:mt-0">
+
+          <div className="text-xs text-slate-400 sm:ml-auto w-full lg:w-auto text-center lg:text-right mt-1 lg:mt-0">
             Terfilter: <strong>{filteredTransactions.length} transaksi</strong> pada periode ini.
           </div>
         </div>
@@ -562,7 +562,8 @@ export default function Reports({ transactions }: ReportsProps) {
               Daftar Rincian Transaksi Terlampir
             </h3>
             
-            <table className="w-full text-left text-xs border-collapse border border-slate-200">
+            <div className="overflow-x-auto print:overflow-visible">
+            <table className="w-full min-w-[560px] print:min-w-0 text-left text-xs border-collapse border border-slate-200">
               <thead>
                 <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                   <th className="p-2 border-r border-slate-200">Tanggal</th>
@@ -603,6 +604,7 @@ export default function Reports({ transactions }: ReportsProps) {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Footer Page 2 */}
